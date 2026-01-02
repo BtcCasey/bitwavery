@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>16-BIT BTC SINGULARITY</title>
+    <title>16-BIT BTC SINGULARITY (STABLE)</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
         #ui {
             position: absolute; top: 25px; left: 25px; z-index: 100;
-            background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3;
-            box-shadow: 0 0 20px rgba(94, 67, 243, 0.4);
+            background: rgba(0,0,0,0.95); padding: 18px; border: 2px solid #5e43f3;
+            box-shadow: 0 0 20px rgba(94, 67, 243, 0.6);
         }
         .label { font-size: 8px; color: #5e43f3; margin-bottom: 8px; letter-spacing: 1px; }
         #price { font-size: 16px; color: #fff; margin: 0; }
-        #status { font-size: 7px; margin-top: 10px; color: #00ffcc; }
+        #status { font-size: 7px; margin-top: 10px; color: #00ffcc; text-transform: uppercase; }
         canvas { display: block; image-rendering: pixelated; width: 100vw; height: 100vh; }
     </style>
 </head>
@@ -22,8 +22,8 @@
 
 <div id="ui">
     <div class="label">CORE SIGNAL: BITCOIN</div>
-    <h1 id="price">INITIALIZING...</h1>
-    <div id="status">SCANNING DEEP SPACE...</div>
+    <h1 id="price">SYNCING...</h1>
+    <div id="status">INITIATING DEEP SCAN...</div>
 </div>
 
 <canvas id="screen"></canvas>
@@ -38,115 +38,121 @@
     canvas.width = RES_W; canvas.height = RES_H;
 
     let targetPrice = 0, currentPrice = 0, volatility = 0;
-    let lastUpdate = Date.now();
     let particles = [];
+    let lastHeartbeat = Date.now();
     
-    // Background Starfield
-    let bgStars = Array.from({length: 120}, () => ({
+    // Starfield Generation
+    let bgStars = Array.from({length: 100}, () => ({
         x: Math.random() * RES_W, y: Math.random() * RES_H,
-        s: Math.random() * 1.5, v: 0.1 + Math.random() * 0.4
+        s: Math.random() * 1.5, v: 0.05 + Math.random() * 0.2
     }));
 
-    // Orbital Particles
-    for(let i=0; i < 150; i++) {
-        particles.push({
-            a: Math.random() * Math.PI * 2,
-            d: 50 + Math.random() * 30,
-            v: 0.01 + Math.random() * 0.03,
-            sz: 1 + Math.random() * 2,
-            c: "#00ffcc"
-        });
+    for(let i=0; i < 120; i++) {
+        particles.push({ a: Math.random() * Math.PI * 2, d: 50 + Math.random() * 40, v: 0.01 + Math.random() * 0.02, sz: 1 + Math.random() * 1.5 });
     }
 
-    // --- NEW MULTI-CHANNEL DATA STREAM ---
-    function initDataStream() {
-        // Source 1: CoinCap WebSocket (Highly reliable)
-        const ws = new WebSocket('wss://ws.coincap.io/prices?assets=bitcoin');
+    // --- TRIPLE REDUNDANCY ENGINE ---
+    function connect() {
+        statusDisplay.innerText = "ATTEMPTING WS LINK...";
+        // Bitfinex is generally more "open" than Binance or CoinCap
+        const ws = new WebSocket('wss://api-pub.bitfinex.com/ws/2');
         
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if (data.bitcoin) processUpdate(parseFloat(data.bitcoin), "LIVE STREAM");
+        ws.onopen = () => {
+            ws.send(JSON.stringify({ event: 'subscribe', channel: 'ticker', symbol: 'tBTCUSD' }));
         };
 
-        ws.onerror = () => { ws.close(); startFallback(); };
-        ws.onclose = () => startFallback();
+        ws.onmessage = (msg) => {
+            const data = JSON.parse(msg.data);
+            if (Array.isArray(data[1])) {
+                const btc = data[1][6]; // Last price index for Bitfinex
+                updateData(btc, "LIVE STREAM");
+            }
+        };
 
-        // Safety Trigger: If no data for 3 seconds, force fallback
-        setTimeout(() => { if(targetPrice === 0) startFallback(); }, 3000);
+        ws.onclose = ws.onerror = () => {
+            statusDisplay.innerText = "WS BLOCKED - STARTING REST";
+            startPolling();
+        };
     }
 
-    async function startFallback() {
-        statusDisplay.innerText = "● FALLBACK MODE: REST";
-        statusDisplay.style.color = "#f7931a";
-        setInterval(async () => {
+    async function startPolling() {
+        const fetchPrice = async () => {
             try {
-                const res = await fetch('https://api.coincap.io/v2/assets/bitcoin');
+                // Using CoinGecko as the heavy-duty backup
+                const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
                 const data = await res.json();
-                processUpdate(parseFloat(data.data.priceUsd), "REST SYNC");
-            } catch(e) { statusDisplay.innerText = "● SIGNAL LOST"; }
-        }, 1000);
+                updateData(data.bitcoin.usd, "REST POLLING");
+            } catch (e) {
+                statusDisplay.innerText = "SIGNAL WEAK - DRIFT MODE";
+            }
+        };
+        fetchPrice();
+        setInterval(fetchPrice, 5000); // 5s fallback polling
     }
 
-    function processUpdate(price, mode) {
-        volatility = targetPrice === 0 ? 0 : Math.abs(price - targetPrice);
-        targetPrice = price;
-        lastUpdate = Date.now();
+    function updateData(p, mode) {
+        volatility = targetPrice === 0 ? 0 : Math.abs(p - targetPrice);
+        targetPrice = p;
+        lastHeartbeat = Date.now();
         priceDisplay.innerText = `$${Math.floor(targetPrice).toLocaleString()}`;
-        if(mode !== "REST SYNC") statusDisplay.innerText = "● SIGNAL STABLE";
+        statusDisplay.innerText = `● SIGNAL: ${mode}`;
+        statusDisplay.style.color = mode.includes("STREAM") ? "#00ffcc" : "#f7931a";
     }
 
     function render(time) {
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // Stars
+        // Background Stars
         ctx.fillStyle = "#fff";
         bgStars.forEach(s => {
             s.x = (s.x - s.v + RES_W) % RES_W;
             ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.s, s.s);
         });
 
-        if (targetPrice === 0) { requestAnimationFrame(render); return; }
+        // "Ghosting" logic - if no price yet, don't crash, just wait
+        if (targetPrice === 0) {
+            ctx.fillStyle = "rgba(94, 67, 243, 0.2)";
+            ctx.fillText("WAITING FOR CORE...", RES_W/2 - 60, RES_H/2);
+            requestAnimationFrame(render);
+            return;
+        }
 
         currentPrice += (targetPrice - currentPrice) * 0.05;
         const centerX = RES_W / 2;
         const centerY = RES_H / 2;
 
-        // Core Pulsar
-        const pulse = Math.sin(time / 150) * (5 + volatility);
-        const coreSize = 30 + pulse;
+        // Pulsar Core
+        const pulse = Math.sin(time / 200) * (3 + (volatility * 0.5));
+        const coreSize = 25 + pulse;
         
-        // Glow
-        const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, coreSize * 1.5);
-        g.addColorStop(0, "#fff");
-        g.addColorStop(0.2, "#5e43f3");
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.fillRect(centerX - 100, centerY - 100, 200, 200);
+        const grad = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, coreSize * 2);
+        grad.addColorStop(0, "#fff");
+        grad.addColorStop(0.3, "#5e43f3");
+        grad.addColorStop(1, "transparent");
+        ctx.fillStyle = grad;
+        ctx.fillRect(centerX-80, centerY-80, 160, 160);
 
-        // Orbitals
+        // Orbital Belt
         particles.forEach(p => {
-            p.a += p.v * (1 + (volatility * 0.2));
-            // Expansion based on price modulo
-            const drift = (currentPrice % 100) / 2;
+            p.a += p.v * (1 + (volatility * 0.1));
+            const drift = (currentPrice % 80) / 2;
             const x = centerX + Math.cos(p.a) * (p.d + drift);
             const y = centerY + Math.sin(p.a) * (p.d + drift);
-            
-            ctx.fillStyle = volatility > 5 ? "#ff4466" : "#00ffcc";
+            ctx.fillStyle = volatility > 2 ? "#ff4d6d" : "#00ffcc";
             ctx.fillRect(Math.floor(x), Math.floor(y), p.sz, p.sz);
         });
 
-        // HUD Geometry
-        ctx.strokeStyle = "rgba(94, 67, 243, 0.2)";
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
-        ctx.moveTo(centerX - 120, centerY); ctx.lineTo(centerX + 120, centerY);
-        ctx.stroke();
+        // Scanline Effect (For that 16-bit CRT feel)
+        if (Math.floor(time/50) % 2 === 0) {
+            ctx.fillStyle = "rgba(255,255,255,0.02)";
+            for(let i=0; i<RES_H; i+=2) ctx.fillRect(0, i, RES_W, 1);
+        }
 
         requestAnimationFrame(render);
     }
 
-    initDataStream();
+    connect();
     requestAnimationFrame(render);
 </script>
 </body>
