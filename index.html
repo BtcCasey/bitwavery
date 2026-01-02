@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC COMMAND: SOVEREIGN CORE</title>
+    <title>BTC COMMAND: SOVEREIGN</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
@@ -19,7 +19,7 @@
 <div id="ui-main">
     <div id="view-label" style="font-size: 8px; color: #fff; margin-bottom: 8px;">COSMOS STATUS: SYNCED</div>
     <h1 id="price">...</h1>
-    <div id="status">SCANNING DEEP SPACE...</div>
+    <div id="status">INITIALIZING STAR-MAP...</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -36,22 +36,31 @@
     // --- STATE ---
     let currentView = 'singularity';
     let btcPrice = 0, startDayPrice = 0, currentVol = 0;
-    let ships = []; // {x, y, side, vol, life}
-    let stars = Array.from({length: 60}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.05+Math.random()*0.1 }));
+    let ships = []; 
+    let explosions = []; 
+    let dailyChartStars = [];
 
     // --- DATA ENGINE ---
-    function init() {
+    async function init() {
         const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
         ws.onopen = () => {
-            ws.send(JSON.stringify({
-                type: "subscribe",
-                channels: ["ticker", "matches"],
-                product_ids: ["BTC-USD"]
-            }));
-            // Get 24h open price for star color
-            fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats')
-                .then(r => r.json()).then(d => startDayPrice = parseFloat(d.open));
+            ws.send(JSON.stringify({ type: "subscribe", channels: ["ticker", "matches"], product_ids: ["BTC-USD"] }));
         };
+
+        // Get 24h Daily Chart for Star Constellation
+        const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
+        startDayPrice = parseFloat(stats.open);
+        
+        // Fetch last 24 1-hour candles to build the constellation
+        const candles = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=3600').then(r => r.json());
+        const prices = candles.map(c => c[4]).reverse(); // Closing prices
+        const minP = Math.min(...prices), maxP = Math.max(...prices);
+        
+        dailyChartStars = prices.map((p, i) => ({
+            x: (i / (prices.length - 1)) * (RES_W - 100) + 50,
+            y: RES_H - ((p - minP) / (maxP - minP) * (RES_H - 100) + 50),
+            baseX: (i / (prices.length - 1)) * (RES_W - 100) + 50
+        }));
 
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
@@ -67,7 +76,8 @@
                     y: data.side === 'buy' ? RES_H + 20 : -20,
                     side: data.side,
                     vol: parseFloat(data.size),
-                    v: 1 + Math.random() * 2
+                    v: 1.5 + Math.random() * 2,
+                    active: true
                 });
             }
         };
@@ -78,28 +88,40 @@
         viewToggle.innerText = currentView === 'singularity' ? 'TO BATTLEFIELD' : 'TO CORE';
     };
 
+    function createExplosion(x, y, color) {
+        for(let i=0; i<8; i++) {
+            explosions.push({
+                x, y, 
+                vx: (Math.random()-0.5)*4, 
+                vy: (Math.random()-0.5)*4, 
+                life: 1.0, 
+                color 
+            });
+        }
+    }
+
     function drawSaturn(time) {
         const cx = RES_W/2, cy = RES_H/2;
-        const volSpeed = 1 + (currentVol / 10000); // Speed scale
+        const volPulse = 1 + (currentVol / 50000); 
         
-        // --- THE RINGS (BACK PART) ---
+        // Back Rings
         ctx.strokeStyle = "rgba(255,255,255,0.4)";
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, 60, 20, Math.PI/8 + Math.sin(time/2000)*0.1, Math.PI, 0);
+        ctx.ellipse(cx, cy, 70, 22, Math.PI/10, Math.PI, 0);
         ctx.stroke();
 
-        // --- THE WHITE CORE ---
-        const pulse = 25 + Math.sin(time/200)*3;
-        const g = ctx.createRadialGradient(cx, cy, 5, cx, cy, pulse);
+        // White Star Core
+        const pulse = 22 + Math.sin(time/(200/volPulse))*4;
+        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse);
         g.addColorStop(0, "#fff");
         g.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(cx, cy, pulse, 0, Math.PI*2); ctx.fill();
 
-        // --- THE RINGS (FRONT PART) ---
+        // Front Rings
         ctx.beginPath();
-        ctx.ellipse(cx, cy, 60, 20, Math.PI/8 + Math.sin(time/2000)*0.1, 0, Math.PI);
+        ctx.ellipse(cx, cy, 70, 22, Math.PI/10, 0, Math.PI);
         ctx.stroke();
     }
 
@@ -107,13 +129,14 @@
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // --- SENTIMENT STARS ---
-        const starColor = btcPrice >= startDayPrice ? "#00ff88" : "#ff4444";
-        stars.forEach(s => {
-            s.x = (s.x - s.v + RES_W) % RES_W;
-            ctx.fillStyle = starColor;
-            ctx.globalAlpha = 0.3 + Math.sin(time/500 + s.x)*0.2;
-            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
+        // --- CONSTELLATION CHART STARS ---
+        const sCol = btcPrice >= startDayPrice ? "#00ff88" : "#ff4444";
+        dailyChartStars.forEach((s, i) => {
+            s.baseX -= 0.2; // Slow drift
+            if (s.baseX < -20) s.baseX = RES_W + 20;
+            ctx.fillStyle = sCol;
+            ctx.globalAlpha = 0.5 + Math.sin(time/300 + i)*0.4;
+            ctx.fillRect(Math.floor(s.baseX), Math.floor(s.y), 2, 2);
         });
         ctx.globalAlpha = 1;
 
@@ -122,18 +145,28 @@
         if (currentView === 'singularity') {
             drawSaturn(time);
         } else {
-            // --- BATTLEFIELD SHIPS ---
+            // --- BATTLEFIELD & COLLISIONS ---
             ships = ships.filter(s => {
                 ctx.fillStyle = s.side === 'buy' ? "#00ff88" : "#ff4444";
-                const size = 2 + Math.min(8, s.vol * 100);
-                
-                // Draw 8-bit ship
-                ctx.fillRect(s.x, s.y, size, size);
-                ctx.fillRect(s.x + (size/4), s.side === 'buy' ? s.y+size : s.y-size/2, size/2, size/2);
-
+                const size = 3 + Math.min(10, s.vol * 150);
+                ctx.fillRect(s.x - size/2, s.y, size, size); // Ship body
                 s.y += s.side === 'buy' ? -s.v : s.v;
+
+                // Collision detection with center line
+                if (Math.abs(s.y - RES_H/2) < 2) {
+                    createExplosion(s.x, s.y, ctx.fillStyle);
+                }
                 return s.y > -50 && s.y < RES_H + 50;
             });
+
+            explosions = explosions.filter(e => {
+                ctx.fillStyle = e.color;
+                ctx.globalAlpha = e.life;
+                ctx.fillRect(e.x, e.y, 2, 2);
+                e.x += e.vx; e.y += e.vy; e.life -= 0.02;
+                return e.life > 0;
+            });
+            ctx.globalAlpha = 1;
         }
 
         requestAnimationFrame(render);
