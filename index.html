@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC NAVIGATOR: HYBRID BYPASS</title>
+    <title>BTC SINGULARITY: RADAR v2</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
@@ -16,13 +16,11 @@
 <body>
 
 <button id="view-toggle">GO TO RADAR</button>
-
 <div id="ui-main">
     <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: AUTO-SCAN</div>
     <h1 id="price">SCANNING...</h1>
     <div id="status">BYPASSING FIREWALL...</div>
 </div>
-
 <canvas id="screen"></canvas>
 
 <script>
@@ -38,57 +36,55 @@
     let currentView = 'singularity';
     let btcPrice = 0, lastPrice = 0;
     let asks = [], bids = [];
+    let effects = [];
+    let trail = []; // The Comet Tail
     let stars = Array.from({length: 40}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.3+Math.random()*0.5 }));
 
-    // --- MULTI-GATEWAY DATA ENGINE ---
-    function initHybridData() {
-        // DOOR 1: BINANCE (Primary)
-        const wsBinance = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@ticker');
-        wsBinance.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            updatePrice(parseFloat(data.c), "BINANCE-WS");
+    // --- EFFECT CLASSES ---
+    class PulsarWave { constructor() { this.r = 10; this.life = 1.0; } update() { this.r += 3.5; this.life -= 0.02; } draw() { ctx.strokeStyle = `rgba(255,255,255,${this.life})`; ctx.beginPath(); ctx.arc(RES_W/2, RES_H/2, this.r, 0, Math.PI*2); ctx.stroke(); } }
+
+    // --- LIVE DATA ENGINE (COINBASE BYPASS) ---
+    function initLive() {
+        const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: "subscribe",
+                channels: [{ name: "ticker", product_ids: ["BTC-USD"] }, { name: "level2", product_ids: ["BTC-USD"] }]
+            }));
         };
 
-        // DOOR 2: COINBASE (Secondary - often bypasses proxies)
-        const wsCoinbase = new WebSocket('wss://ws-feed.exchange.coinbase.com');
-        wsCoinbase.onopen = () => wsCoinbase.send(JSON.stringify({type:"subscribe",channels:[{name:"ticker",product_ids:["BTC-USD"]}]}));
-        wsCoinbase.onmessage = (e) => {
+        ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            if(data.price) updatePrice(parseFloat(data.price), "COINBASE-WS");
+            if (data.type === 'ticker') {
+                const newPrice = parseFloat(data.price);
+                if (btcPrice > 0) {
+                    // Trigger Barrier Events
+                    if (Math.floor(newPrice/100) !== Math.floor(btcPrice/100)) effects.push(new PulsarWave());
+                }
+                lastPrice = btcPrice;
+                btcPrice = newPrice;
+                priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
+                statusDisplay.innerText = "SIGNAL: COINBASE-WS LIVE";
+            }
+
+            // Real Order Book Depth
+            if (data.type === 'snapshot') {
+                asks = data.asks.slice(0, 10);
+                bids = data.bids.slice(0, 10);
+            }
+            if (data.type === 'l2update') {
+                // Simplified update for performance
+                data.changes.forEach(change => {
+                    const side = change[0], price = change[1], size = change[2];
+                    if (side === 'sell') asks[0] = [price, size]; else bids[0] = [price, size];
+                });
+            }
         };
-
-        // DOOR 3: FAIL-SAFE POLLING (The "Unblockable" HTTP Tunnel)
-        setInterval(async () => {
-            if (Date.now() - lastUpdate > 10000) { // Only if WS fails for 10s
-                try {
-                    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-                    const data = await res.json();
-                    updatePrice(parseFloat(data.price), "HTTP-TUNNEL");
-                } catch(e) {}
-            }
-        }, 5000);
-    }
-
-    let lastUpdate = 0;
-    function updatePrice(p, source) {
-        lastUpdate = Date.now();
-        lastPrice = btcPrice;
-        btcPrice = p;
-        priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
-        statusDisplay.innerText = `SIGNAL: ${source}`;
-        
-        // Mock orderbook if live depth is blocked
-        if (asks.length === 0) {
-            for(let i=0; i<10; i++) {
-                asks[i] = [btcPrice + (i*10), Math.random()*2];
-                bids[i] = [btcPrice - (i*10), Math.random()*2];
-            }
-        }
     }
 
     viewToggle.onclick = () => {
         currentView = currentView === 'singularity' ? 'radar' : 'singularity';
-        viewToggle.innerText = currentView === 'singularity' ? 'GO TO RADAR' : 'GO TO SINGULARITY';
+        viewToggle.innerText = currentView === 'singularity' ? 'GO TO RADAR' : 'GO TO CORE';
     };
 
     function render(time) {
@@ -104,10 +100,21 @@
 
         if (btcPrice === 0) {
             ctx.fillStyle = "#5e43f3";
-            ctx.fillText("SEARCHING FOR DATA...", 140, 140);
+            ctx.fillText("CONNECTING TO FEED...", 140, 140);
         } else {
             const centerX = RES_W/2, centerY = RES_H/2;
+
             if (currentView === 'singularity') {
+                // --- THE COMET TAIL ---
+                trail.push({x: centerX, y: centerY + Math.sin(time/400)*15});
+                if (trail.length > 25) trail.shift();
+                trail.forEach((p, i) => {
+                    ctx.strokeStyle = btcPrice >= lastPrice ? `rgba(0, 255, 136, ${i/25})` : `rgba(255, 68, 68, ${i/25})`;
+                    ctx.lineWidth = i/3;
+                    ctx.beginPath(); ctx.arc(p.x - (25-i)*5, p.y, i/5, 0, Math.PI*2); ctx.stroke();
+                });
+
+                // --- THE CORE ---
                 const pulse = 25 + Math.sin(time/200)*5;
                 const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*1.8);
                 g.addColorStop(0, "#fff");
@@ -116,23 +123,30 @@
                 ctx.fillStyle = g;
                 ctx.fillRect(centerX-100, centerY-100, 200, 200);
             } else {
-                // RADAR VIEW
+                // --- LIVE RADAR (ORDER BOOK) ---
+                const spreadGap = 20;
                 asks.forEach((lvl, i) => {
+                    const price = parseFloat(lvl[0]);
+                    const vol = Math.min(20, parseFloat(lvl[1]) * 10);
+                    const y = centerY - spreadGap - (i * 12) - (price - btcPrice);
                     ctx.fillStyle = "#ff4444";
-                    ctx.fillRect(40 + (i*40), centerY - 40 - (Math.sin(time/500 + i)*10), 10, 5);
+                    ctx.fillRect(40 + (i*40), y, 10 + vol, 5); // Enemies size = Volume
                 });
                 bids.forEach((lvl, i) => {
+                    const price = parseFloat(lvl[0]);
+                    const vol = Math.min(20, parseFloat(lvl[1]) * 10);
+                    const y = centerY + spreadGap + (i * 12) + (btcPrice - price);
                     ctx.fillStyle = "#00ff88";
-                    ctx.fillRect(40 + (i*40), centerY + 40 + (Math.cos(time/500 + i)*10), 10, 5);
+                    ctx.fillRect(40 + (i*40), y, 10 + vol, 4); // Defenders size = Volume
                 });
-                ctx.strokeStyle = "rgba(94,67,243,0.3)";
-                ctx.strokeRect(20, centerY-5, RES_W-40, 10);
             }
         }
+
+        effects = effects.filter(e => { e.update(); e.draw(); return e.life > 0; });
         requestAnimationFrame(render);
     }
 
-    initHybridData();
+    initLive();
     render();
 </script>
 </body>
