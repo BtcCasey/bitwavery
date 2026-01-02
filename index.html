@@ -2,24 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC COMMAND: MOTHERSHIP & SINGULARITY</title>
+    <title>BTC COMMAND: SOVEREIGN</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; box-shadow: 0 0 15px #5e43f3; pointer-events: none; }
+        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; pointer-events: none; }
         #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #5e43f3; color: #fff; border: 4px solid #fff; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
         #price { font-size: 18px; color: #fff; margin: 0; }
         #status { font-size: 7px; margin-top: 10px; color: #00ffcc; text-transform: uppercase; }
-        canvas { display: block; image-rendering: pixelated; width: 100vw; height: 100vh; }
+        canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-<button id="view-toggle">GO TO RADAR</button>
+<button id="view-toggle">SWITCH TO RADAR</button>
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: COINBASE-L2</div>
-    <h1 id="price">SYNCING...</h1>
-    <div id="status">ESTABLISHING SECURE LINK...</div>
+    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SYSTEM: ACTIVE</div>
+    <h1 id="price">INITIALIZING...</h1>
+    <div id="status">CONNECTING TO COINBASE L2...</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -33,25 +33,15 @@
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
-    // --- STATE ---
+    // --- CONFIG & STATE ---
     let currentView = 'singularity';
     let btcPrice = 0, startHourPrice = 0;
+    let history = []; // Stores {price, time} for 60 mins
     let asks = [], bids = [], lasers = [];
-    let history = []; // 60-minute price trail (scaled)
-    let sentimentColor = {r: 255, g: 255, b: 255}; 
-    let stars = Array.from({length: 40}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.1+Math.random()*0.2 }));
+    let sentimentColor = {r: 255, g: 255, b: 255};
+    const MAX_HISTORY = 360; // Approx 1 hour at 10s intervals
 
-    // --- HELPER: LERP ---
     const lerp = (a, b, t) => a + (b - a) * t;
-
-    function drawMothership(x, y, color, isRed) {
-        ctx.fillStyle = color;
-        // Pixelated Hull
-        ctx.fillRect(x-20, y, 40, 6); 
-        ctx.fillRect(x-15, isRed ? y-4 : y+6, 30, 4);
-        ctx.fillStyle = "#fff"; // Windows/Lights
-        ctx.fillRect(x-10, y+2, 2, 2); ctx.fillRect(x+8, y+2, 2, 2);
-    }
 
     // --- DATA ENGINE ---
     function init() {
@@ -66,54 +56,50 @@
 
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            
             if (data.type === 'ticker') {
                 btcPrice = parseFloat(data.price);
                 if (!startHourPrice) startHourPrice = btcPrice;
+                priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
+                statusDisplay.innerText = "COINBASE-L2: STREAMING";
                 
-                priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
-                statusDisplay.innerText = "LINK STABLE";
-
-                // Add to hourly history
-                history.push(btcPrice);
-                if (history.length > 300) history.shift();
+                // Add to 1-hour chart (every few seconds)
+                if (history.length === 0 || Date.now() - history[history.length-1].t > 10000) {
+                    history.push({p: btcPrice, t: Date.now()});
+                    if (history.length > MAX_HISTORY) history.shift();
+                }
             }
-
             if (data.type === 'snapshot') {
                 asks = data.asks.slice(0, 10);
                 bids = data.bids.slice(0, 10);
             }
-
-            if (data.type === 'match') {
-                lasers.push({
-                    y: Math.random() * RES_H,
-                    side: data.side, // 'buy' or 'sell'
-                    life: 1.0,
-                    size: parseFloat(data.size)
-                });
+            if (data.type === 'match' && currentView === 'radar') {
+                lasers.push({ y: Math.random() * RES_H, side: data.side, life: 1.0, size: parseFloat(data.size) });
             }
         };
     }
 
     viewToggle.onclick = () => {
         currentView = currentView === 'singularity' ? 'radar' : 'singularity';
-        viewToggle.innerText = currentView === 'singularity' ? 'GO TO RADAR' : 'GO TO CORE';
+        viewToggle.innerText = currentView === 'singularity' ? 'SWITCH TO RADAR' : 'RETURN TO CORE';
     };
+
+    function drawAxis(centerX, y, label, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(RES_W, y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = '6px "Press Start 2P"';
+        ctx.fillText(label, 10, y - 5);
+    }
 
     function render(time) {
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
-
-        // Slow Background Stars
-        stars.forEach(s => {
-            s.x = (s.x - s.v + RES_W) % RES_W;
-            ctx.fillStyle = "#222";
-            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
-        });
-
         if (btcPrice === 0) return requestAnimationFrame(render);
 
-        // --- CALCULATE HOURLY SENTIMENT ---
+        // Calculate Sentiment Color (Current Price vs 1-Hour Start)
         const diff = btcPrice - startHourPrice;
         const targetColor = diff >= 0 ? {r: 0, g: 255, b: 136} : {r: 255, g: 68, b: 68};
         sentimentColor.r = lerp(sentimentColor.r, targetColor.r, 0.05);
@@ -124,67 +110,73 @@
         const centerX = RES_W/2, centerY = RES_H/2;
 
         if (currentView === 'singularity') {
-            // --- HOURLY COMET TRAIL ---
-            ctx.beginPath();
-            ctx.strokeStyle = sCol;
-            ctx.globalAlpha = 0.4;
-            ctx.lineWidth = 2;
-            history.forEach((h, i) => {
-                const tx = centerX - (history.length - i) * 2;
-                const ty = centerY + (btcPrice - h) * 0.8; // Vertical movement based on price delta
-                if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
-            });
-            ctx.stroke();
-            ctx.globalAlpha = 1.0;
+            // --- 60-MIN HISTORICAL COMET TRAIL ---
+            if (history.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = sCol;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.5;
+                history.forEach((h, i) => {
+                    const tx = centerX - (history.length - i) * (RES_W / (MAX_HISTORY * 0.8));
+                    const ty = centerY + (btcPrice - h.p) * 0.2; // Scale price movement
+                    if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+                });
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
 
-            // --- THE SINGULARITY ---
-            const pulse = 25 + Math.sin(time/200)*5;
-            const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*1.8);
+            // --- THE CORE ---
+            const pulse = 20 + Math.sin(time/250)*5;
+            const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*2);
             g.addColorStop(0, "#fff");
-            g.addColorStop(0.4, sCol);
+            g.addColorStop(0.3, sCol);
             g.addColorStop(1, "transparent");
             ctx.fillStyle = g;
-            ctx.fillRect(centerX-100, centerY-100, 200, 200);
+            ctx.fillRect(centerX-80, centerY-80, 160, 160);
 
         } else {
-            // --- RADAR VIEW (MOTHERSHIPS) ---
-            // Calculate mothership drift based on price pressure
-            const drift = Math.sin(time/1000) * 20;
+            // --- RADAR MOTHERSHIPS & AXIS ---
+            const priceScale = 0.5; // Pixels per dollar
             
-            // RED MOTHERSHIP (Sell Wall - Top)
-            const redY = 40 + drift;
-            drawMothership(centerX, redY, "#ff4444", true);
-            
-            // GREEN MOTHERSHIP (Buy Wall - Bottom)
-            const greenY = RES_H - 40 - drift;
-            drawMothership(centerX, greenY, "#00ff88", false);
-
-            // Draw Order Book Levels between them
-            asks.forEach((l, i) => {
-                ctx.fillStyle = "rgba(255, 68, 68, 0.3)";
-                ctx.fillRect(40 + i*40, redY + 15 + i*5, 15, 2);
+            // Draw Dynamic Price Axis
+            [...Array(5)].forEach((_, i) => {
+                const step = 50 * (i - 2);
+                const p = Math.floor(btcPrice / 50) * 50 + step;
+                const y = centerY + (btcPrice - p) * priceScale;
+                drawAxis(centerX, y, `$${p}`, "rgba(94, 67, 243, 0.3)");
             });
-            bids.forEach((l, i) => {
-                ctx.fillStyle = "rgba(0, 255, 136, 0.3)";
-                ctx.fillRect(40 + i*40, greenY - 15 - i*5, 15, 2);
+
+            // Mothership Positioning (Moves toward current price axis)
+            const sellWallPrice = asks[0] ? parseFloat(asks[0][0]) : btcPrice + 10;
+            const buyWallPrice = bids[0] ? parseFloat(bids[0][0]) : btcPrice - 10;
+
+            const redShipY = centerY - (sellWallPrice - btcPrice) * priceScale;
+            const greenShipY = centerY + (btcPrice - buyWallPrice) * priceScale;
+
+            // Red Mothership
+            ctx.fillStyle = "#ff4444";
+            ctx.fillRect(centerX-30, redShipY-10, 60, 10); // Hull
+            ctx.fillRect(centerX-10, redShipY-15, 20, 5); // Bridge
+            
+            // Green Mothership
+            ctx.fillStyle = "#00ff88";
+            ctx.fillRect(centerX-30, greenShipY, 60, 10); // Hull
+            ctx.fillRect(centerX-10, greenShipY+10, 20, 5); // Bridge
+
+            // Trade Lasers
+            lasers = lasers.filter(l => {
+                ctx.strokeStyle = l.side === 'buy' ? `rgba(0, 255, 136, ${l.life})` : `rgba(255, 68, 68, ${l.life})`;
+                ctx.lineWidth = Math.min(5, l.size * 10);
+                ctx.beginPath();
+                if (l.side === 'buy') {
+                    ctx.moveTo(centerX, greenShipY); ctx.lineTo(Math.random()*RES_W, l.y);
+                } else {
+                    ctx.moveTo(centerX, redShipY); ctx.lineTo(Math.random()*RES_W, l.y);
+                }
+                ctx.stroke();
+                l.life -= 0.05; return l.life > 0;
             });
         }
-
-        // --- HORIZONTAL LASERS (TRADE MATCHES) ---
-        lasers = lasers.filter(l => {
-            ctx.strokeStyle = l.side === 'buy' ? `rgba(0, 255, 136, ${l.life})` : `rgba(255, 68, 68, ${l.life})`;
-            ctx.lineWidth = Math.min(4, l.size * 10);
-            const y = l.y;
-            ctx.beginPath();
-            if (l.side === 'buy') { // Shoots from Green (Bottom) toward Top
-                ctx.moveTo(centerX, RES_H - 40); ctx.lineTo(l.x || (Math.random()*RES_W), y);
-            } else { // Shoots from Red (Top) toward Bottom
-                ctx.moveTo(centerX, 40); ctx.lineTo(l.x || (Math.random()*RES_W), y);
-            }
-            ctx.stroke();
-            l.life -= 0.04;
-            return l.life > 0;
-        });
 
         requestAnimationFrame(render);
     }
