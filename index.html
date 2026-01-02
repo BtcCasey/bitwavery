@@ -2,161 +2,159 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DEEP SPACE NAVIGATOR</title>
+    <title>BTC NAVIGATOR: UNIFIED</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
         
-        /* UI Layers */
         #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; }
         #view-toggle { 
             position: absolute; top: 25px; right: 25px; z-index: 100; 
             background: #5e43f3; color: #fff; border: 4px solid #fff; 
             padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px;
-            image-rendering: pixelated;
         }
-        #view-toggle:hover { background: #fff; color: #5e43f3; }
-        
         #price { font-size: 18px; color: #fff; margin: 0; }
-        #event-log { position: absolute; bottom: 20px; left: 20px; font-size: 8px; color: #00ffcc; line-height: 1.6; pointer-events: none; }
-        
+        #status { font-size: 7px; margin-top: 10px; color: #00ffcc; }
         canvas { display: block; image-rendering: pixelated; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-<button id="view-toggle">SWITCH TO RADAR</button>
+<button id="view-toggle">GO TO RADAR</button>
 
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: SINGULARITY</div>
-    <h1 id="price">SYNCING...</h1>
+    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">CORE: SINGULARITY</div>
+    <h1 id="price">CONNECTING...</h1>
+    <div id="status">SCANNING FREQUENCIES...</div>
 </div>
 
-<div id="event-log"></div>
 <canvas id="screen"></canvas>
 
 <script>
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
     const priceDisplay = document.getElementById('price');
-    const logDisplay = document.getElementById('event-log');
+    const statusDisplay = document.getElementById('status');
     const viewToggle = document.getElementById('view-toggle');
     const viewLabel = document.getElementById('view-label');
 
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
-    // --- SHARED STATE ---
-    let currentView = 'singularity'; // 'singularity' or 'radar'
-    let targetPrice = 0, currentPrice = 0;
+    let currentView = 'singularity';
+    let btcPrice = 0, lerpPrice = 0;
     let asks = [], bids = [];
-    let effects = [];
-    let trail = [];
-    let bgStars = Array.from({length: 60}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, s: Math.random()*1.5, v: 0.1+Math.random()*0.3 }));
+    let stars = Array.from({length: 50}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.2+Math.random()*0.5 }));
 
-    // --- DATA HANDLING ---
-    function initData() {
-        // Stream 1: Ticker & Trades (for Singularity)
-        const wsTicker = new WebSocket('wss://api-pub.bitfinex.com/ws/2');
-        wsTicker.onopen = () => {
-            wsTicker.send(JSON.stringify({ event: 'subscribe', channel: 'ticker', symbol: 'tBTCUSD' }));
-            wsTicker.send(JSON.stringify({ event: 'subscribe', channel: 'trades', symbol: 'tBTCUSD' }));
-        };
-        wsTicker.onmessage = (msg) => {
-            const data = JSON.parse(msg.data);
-            if (data[1] && Array.isArray(data[1]) && data[1].length > 6) {
-                targetPrice = data[1][6];
-                priceDisplay.innerText = `$${Math.floor(targetPrice).toLocaleString()}`;
+    // --- UNIFIED BINANCE STREAM ---
+    function initStream() {
+        // Combined Stream: Ticker + Top 20 Depth
+        const ws = new WebSocket('wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/btcusdt@depth20@100ms');
+
+        ws.onopen = () => { statusDisplay.innerText = "SIGNAL ACQUIRED"; };
+
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            
+            // Handle Price Ticker
+            if (msg.stream === 'btcusdt@ticker') {
+                btcPrice = parseFloat(msg.data.c);
+                priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
+            }
+
+            // Handle Order Book
+            if (msg.stream === 'btcusdt@depth20@100ms') {
+                asks = msg.data.asks.slice(0, 10);
+                bids = msg.data.bids.slice(0, 10);
             }
         };
 
-        // Stream 2: Order Book (for Radar)
-        const wsDepth = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@depth20@100ms');
-        wsDepth.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            asks = data.asks.slice(0, 10);
-            bids = data.bids.slice(0, 10);
+        ws.onclose = () => {
+            statusDisplay.innerText = "RECONNECTING...";
+            setTimeout(initStream, 2000);
         };
     }
 
-    // --- TOGGLE LOGIC ---
     viewToggle.onclick = () => {
-        if (currentView === 'singularity') {
-            currentView = 'radar';
-            viewToggle.innerText = 'SWITCH TO SINGULARITY';
-            viewLabel.innerText = 'SIGNAL: DEPTH RADAR';
-        } else {
-            currentView = 'singularity';
-            viewToggle.innerText = 'SWITCH TO RADAR';
-            viewLabel.innerText = 'SIGNAL: SINGULARITY';
-        }
+        currentView = currentView === 'singularity' ? 'radar' : 'singularity';
+        viewToggle.innerText = currentView === 'singularity' ? 'GO TO RADAR' : 'GO TO SINGULARITY';
+        viewLabel.innerText = currentView === 'singularity' ? 'CORE: SINGULARITY' : 'CORE: DEPTH RADAR';
     };
-
-    // --- RENDERING ENGINES ---
-    function drawInvader(x, y, vol, color) {
-        const s = Math.min(15, 4 + vol * 3);
-        ctx.fillStyle = color;
-        ctx.fillRect(x - s/2, y, s, s/2); // Basic 8-bit alien
-        ctx.fillRect(x - s/4, y - s/4, s/2, s/4);
-    }
 
     function render(time) {
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // Background Stars
-        bgStars.forEach(s => {
+        // Background
+        ctx.fillStyle = "#222";
+        stars.forEach(s => {
             s.x = (s.x - s.v + RES_W) % RES_W;
-            ctx.fillStyle = "#333";
-            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.s, s.s);
+            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
         });
 
         if (currentView === 'singularity') {
-            // --- SINGULARITY VIEW ---
-            currentPrice += (targetPrice - currentPrice) * 0.05;
-            const pulse = 25 + Math.sin(time/200)*6;
-            const g = ctx.createRadialGradient(RES_W/2, RES_H/2, 2, RES_W/2, RES_H/2, pulse*1.8);
-            g.addColorStop(0, "#fff"); g.addColorStop(0.4, "#5e43f3"); g.addColorStop(1, "transparent");
-            ctx.fillStyle = g; ctx.fillRect(RES_W/2-70, RES_H/2-70, 140, 140);
-            
-            // Tail effect
-            trail.push({x: RES_W/2, y: RES_H/2 + (Math.sin(time/400)*15)});
-            if (trail.length > 20) trail.shift();
-            trail.forEach((p, i) => {
-                ctx.strokeStyle = `rgba(94, 67, 243, ${i/20})`;
-                ctx.beginPath(); ctx.arc(p.x - (20-i)*4, p.y, i/4, 0, Math.PI*2); ctx.stroke();
-            });
+            // --- SINGULARITY DRAW ---
+            const centerX = RES_W / 2;
+            const centerY = RES_H / 2;
+            const pulse = 25 + Math.sin(time / 200) * 5;
 
+            const grad = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse * 2);
+            grad.addColorStop(0, "#fff");
+            grad.addColorStop(0.3, "#5e43f3");
+            grad.addColorStop(1, "transparent");
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(centerX - 100, centerY - 100, 200, 200);
+
+            // Orbitals
+            for(let i=0; i<8; i++) {
+                const ang = (time/1000) + (i * Math.PI/4);
+                const x = centerX + Math.cos(ang) * 60;
+                const y = centerY + Math.sin(ang) * 40;
+                ctx.fillStyle = "#00ffcc";
+                ctx.fillRect(x, y, 2, 2);
+            }
         } else {
-            // --- RADAR VIEW ---
+            // --- RADAR DRAW ---
             const centerH = RES_H / 2;
-            ctx.strokeStyle = "rgba(94, 67, 243, 0.2)";
-            ctx.strokeRect(20, centerH - 2, RES_W - 40, 4); // The "Spread" Gap
-
+            
+            // Drawing Asks (Aliens)
             asks.forEach((lvl, i) => {
-                const x = (RES_W / asks.length) * i + 25;
-                const y = centerH - 30 - (i * 10);
-                drawInvader(x, y, parseFloat(lvl[1]), "#ff4444");
+                const vol = parseFloat(lvl[1]);
+                const x = (RES_W / 12) * (i + 1);
+                const y = centerH - 40 - (i * 5);
+                const sz = Math.min(15, 4 + vol * 2);
+                
+                ctx.fillStyle = "#ff4444";
+                ctx.fillRect(x - sz/2, y, sz, sz/2); // Ship Hull
+                ctx.fillRect(x - 2, y - 4, 4, 4); // Ship Cockpit
             });
 
+            // Drawing Bids (Tanks)
             bids.forEach((lvl, i) => {
-                const x = (RES_W / bids.length) * i + 25;
-                const y = centerH + 30 + (i * 10);
-                ctx.fillStyle = "#00ff88";
-                ctx.fillRect(x - 5, y, 10, 4); // Defender tank
-            });
-        }
+                const vol = parseFloat(lvl[1]);
+                const x = (RES_W / 12) * (i + 1);
+                const y = centerH + 40 + (i * 5);
+                const sz = Math.min(15, 4 + vol * 2);
 
-        // Scanline Effect
-        if (Math.floor(time/50) % 2 === 0) {
-            ctx.fillStyle = "rgba(255,255,255,0.02)";
-            for(let i=0; i<RES_H; i+=2) ctx.fillRect(0, i, RES_W, 1);
+                ctx.fillStyle = "#00ff88";
+                ctx.fillRect(x - sz/2, y, sz, 4); // Tank Base
+                ctx.fillRect(x - 1, y - 4, 2, 4); // Tank Turret
+            });
+
+            // Spread Line
+            ctx.strokeStyle = "rgba(94, 67, 243, 0.4)";
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(30, centerH); ctx.lineTo(RES_W - 30, centerH);
+            ctx.stroke();
+            ctx.setLineDash([]);
         }
 
         requestAnimationFrame(render);
     }
 
-    initData();
+    initStream();
     render();
 </script>
 </body>
