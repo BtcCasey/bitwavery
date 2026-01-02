@@ -2,24 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC COMMAND: MILKY WAY</title>
+    <title>BTC COMMAND: VORTEX</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background: #00020a; font-family: 'Press Start 2P', cursive; color: #fff; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Press Start 2P', cursive; color: #fff; }
         #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #fff; pointer-events: none; }
         #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #fff; color: #000; border: none; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
         #price { font-size: 18px; color: #fff; margin: 0; }
         #status { font-size: 7px; margin-top: 10px; color: #777; text-transform: uppercase; }
-        canvas { display: block; width: 100vw; height: 100vh; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
     </style>
 </head>
 <body>
 
 <button id="view-toggle">TO BATTLEFIELD</button>
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #fff; margin-bottom: 8px;">GALACTIC SYNC: ACTIVE</div>
+    <div id="view-label" style="font-size: 8px; color: #fff; margin-bottom: 8px;">VORTEX PROTOCOL: ONLINE</div>
     <h1 id="price">SYNCING...</h1>
-    <div id="status">MAPPING GALAXY TO PRICE DATA...</div>
+    <div id="status">TWISTING SPACE-TIME TO PRICE...</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -35,26 +35,27 @@
 
     let currentView = 'singularity';
     let btcPrice = 0, startDayPrice = 0, currentVol = 0;
-    let ships = [], explosions = [], galaxyStars = [];
+    let ships = [], explosions = [], spiralStars = [];
+    let galacticRotation = 0;
 
-    // --- GALAXY ENGINE ---
-    async function initGalaxy() {
-        // Fetch 24h of 5-minute candles for high-density mapping
+    async function initVortex() {
+        const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
+        startDayPrice = parseFloat(stats.open);
+        
         const candles = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300').then(r => r.json());
-        const prices = candles.map(c => c[4]).reverse(); 
+        const prices = candles.map(c => c[4]).reverse();
         const minP = Math.min(...prices), maxP = Math.max(...prices);
-        startDayPrice = prices[0];
 
-        // Create 400 stars based on price clusters (The Milky Way)
-        galaxyStars = prices.map((p, i) => {
-            const progress = i / prices.length;
-            const x = progress * RES_W;
-            const y = RES_H - ((p - minP) / (maxP - minP) * (RES_H * 0.6) + (RES_H * 0.2));
+        // Map price history to spiral coordinates: r = a * theta
+        spiralStars = prices.map((p, i) => {
+            const angle = i * 0.15; // Spiral expansion rate
+            const priceNorm = (p - minP) / (maxP - minP);
+            const r = 20 + (i * 0.6) + (priceNorm * 30); // Radius based on time + price volatility
             return {
-                x, y, 
-                size: Math.random() * 1.5,
-                alpha: 0.1 + Math.random() * 0.5,
-                drift: Math.random() * 0.05
+                r, angle,
+                size: 1 + Math.random() * 2,
+                alpha: 0.2 + Math.random() * 0.6,
+                isNebula: i % 15 === 0
             };
         });
     }
@@ -81,74 +82,77 @@
         viewToggle.innerText = currentView === 'singularity' ? 'TO BATTLEFIELD' : 'TO CORE';
     };
 
+    function drawGalaxy(time) {
+        const cx = RES_W/2, cy = RES_H/2;
+        const color = btcPrice >= startDayPrice ? [0, 255, 136] : [255, 68, 68];
+        const volSpeed = (currentVol / 100000) * 0.01;
+        
+        galacticRotation += 0.005 + volSpeed;
+
+        spiralStars.forEach(s => {
+            const currentAngle = s.angle + galacticRotation;
+            const x = cx + Math.cos(currentAngle) * s.r;
+            const y = cy + Math.sin(currentAngle) * s.r * 0.6; // Elliptical tilt
+
+            ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${s.alpha})`;
+            ctx.fillRect(Math.floor(x), Math.floor(y), s.size, s.size);
+
+            if (s.isNebula) {
+                ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.03)`;
+                ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI*2); ctx.fill();
+            }
+        });
+    }
+
     function drawSingularity(time) {
         const cx = RES_W/2, cy = RES_H/2;
-        const volFact = 1 + (currentVol / 80000);
+        const pulse = 22 + Math.sin(time/150)*3;
 
-        // Core
-        const pulse = 20 + Math.sin(time/(200/volFact))*4;
-        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse * 2);
+        // Saturn Rings (drawn to clip through the core)
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(cx, cy, 70, 25, Math.PI/10, 0, Math.PI*2); ctx.stroke();
+
+        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse * 1.5);
         g.addColorStop(0, "#fff");
-        g.addColorStop(0.2, "rgba(255,255,255,0.8)");
         g.addColorStop(1, "transparent");
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(cx, cy, pulse * 2, 0, Math.PI*2); ctx.fill();
-
-        // Saturn Rings
-        ctx.strokeStyle = "rgba(255,255,255,0.4)";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, 75, 20, Math.PI/12, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, pulse * 1.5, 0, Math.PI*2); ctx.fill();
     }
 
     function render(time) {
-        ctx.fillStyle = "#00030a";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // --- DRAW MILKY WAY (PRICE MAP) ---
-        const sentimentColor = btcPrice >= startDayPrice ? [0, 255, 136] : [255, 68, 68];
-        galaxyStars.forEach((s, i) => {
-            s.x = (s.x - s.drift + RES_W) % RES_W;
-            ctx.fillStyle = `rgba(${sentimentColor[0]}, ${sentimentColor[1]}, ${sentimentColor[2]}, ${s.alpha})`;
-            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.size, s.size);
-            
-            // Add a "Nebula" glow to some stars
-            if (i % 20 === 0) {
-                ctx.fillStyle = `rgba(${sentimentColor[0]}, ${sentimentColor[1]}, ${sentimentColor[2]}, 0.05)`;
-                ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI*2); ctx.fill();
-            }
-        });
-
         if (btcPrice === 0) return requestAnimationFrame(render);
+
+        drawGalaxy(time);
 
         if (currentView === 'singularity') {
             drawSingularity(time);
         } else {
-            // --- BATTLEFIELD & EXPLOSIONS ---
             ships = ships.filter(s => {
                 ctx.fillStyle = s.side === 'buy' ? "#00ff88" : "#ff4444";
-                const sz = 2 + Math.min(8, s.vol * 150);
+                const sz = 3 + Math.min(10, s.vol * 150);
                 ctx.fillRect(s.x - sz/2, s.y, sz, sz);
                 s.y += s.side === 'buy' ? -s.v : s.v;
                 if (Math.abs(s.y - RES_H/2) < 2) {
-                    for(let i=0; i<5; i++) explosions.push({ x: s.x, y: s.y, vx: (Math.random()-0.5)*3, vy: (Math.random()-0.5)*3, life: 1.0, color: ctx.fillStyle });
+                    for(let i=0; i<6; i++) explosions.push({ x: s.x, y: s.y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 1.0, color: ctx.fillStyle });
                 }
                 return s.y > -50 && s.y < RES_H + 50;
             });
             explosions = explosions.filter(e => {
                 ctx.fillStyle = e.color; ctx.globalAlpha = e.life;
-                ctx.fillRect(e.x, e.y, 1.5, 1.5);
-                e.x += e.vx; e.y += e.vy; e.life -= 0.03;
+                ctx.fillRect(e.x, e.y, 2, 2);
+                e.x += e.vx; e.y += e.vy; e.life -= 0.02;
                 return e.life > 0;
             });
             ctx.globalAlpha = 1;
         }
-
         requestAnimationFrame(render);
     }
 
-    initGalaxy();
+    initVortex();
     initWS();
     render();
 </script>
