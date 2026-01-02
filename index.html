@@ -3,20 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>16-BIT BTC NAVIGATOR</title>
+    <title>16-BIT BTC NAVIGATOR (FIXED)</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #04091a; font-family: 'Press Start 2P', cursive; color: #fff; }
         #ui {
             position: absolute; top: 25px; left: 25px; z-index: 100;
-            background: linear-gradient(135deg, #1a1a1a, #000);
-            padding: 20px; border: 3px solid #f7931a;
+            background: rgba(0,0,0,0.85); padding: 20px; border: 3px solid #f7931a;
             box-shadow: 6px 6px 0px #854d0e;
         }
         .label { font-size: 9px; color: #f7931a; margin-bottom: 10px; letter-spacing: 1px; }
-        #price { font-size: 20px; color: #fff; margin: 0; text-shadow: 3px 3px 0px #444; }
-        #stream-status { font-size: 8px; margin-top: 10px; color: #00ff00; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
+        #price { font-size: 18px; color: #fff; margin: 0; }
+        #status { font-size: 8px; margin-top: 10px; color: #00ff00; }
         canvas { display: block; image-rendering: pixelated; width: 100vw; height: 100vh; }
     </style>
 </head>
@@ -24,8 +22,8 @@
 
 <div id="ui">
     <div class="label">BITCOIN DATA STREAM</div>
-    <h1 id="price">LOADING...</h1>
-    <div id="stream-status">● LIVE WEBSOCKET</div>
+    <h1 id="price">INITIALIZING...</h1>
+    <div id="status">CONNECTING...</div>
 </div>
 
 <canvas id="screen"></canvas>
@@ -34,121 +32,116 @@
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
     const priceDisplay = document.getElementById('price');
+    const statusDisplay = document.getElementById('status');
 
-    // 16-Bit Resolution (Higher than 8-bit, roughly 480x270)
-    const RES_W = 480;
-    const RES_H = 270;
-    canvas.width = RES_W;
-    canvas.height = RES_H;
+    const RES_W = 480; const RES_H = 270;
+    canvas.width = RES_W; canvas.height = RES_H;
 
-    let btcPrice = 0;
-    let targetPrice = 0;
+    let btcPrice = 0, targetPrice = 0;
     let history = new Array(100).fill(0);
-    let stars = Array.from({length: 80}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H*0.6, s: Math.random()*1.5 }));
+    let stars = Array.from({length: 60}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H*0.6, s: Math.random()*1.2 }));
     
-    // Sensitivity Multiplier (Makes small moves look like big waves)
-    const SENSITIVITY = 15; 
+    // SENSITIVITY: Higher = more dramatic wave height changes
+    const SENSITIVITY = 25; 
 
-    // --- REAL TIME WEBSOCKET (Binance) ---
-    // This fetches price data instantly as trades happen
-    const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@ticker');
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        targetPrice = parseFloat(data.c); // 'c' is the last close price
-        priceDisplay.innerText = `$${Math.floor(targetPrice).toLocaleString()}`;
-        
-        // Add to history and shift
-        history.push(targetPrice);
+    // --- SMART CONNECTION LOGIC ---
+    function initStream() {
+        // Try Global Binance first, fallback to US
+        const endpoints = [
+            'wss://stream.binance.com:9443/ws/btcusdt@ticker',
+            'wss://stream.binance.us:9443/ws/btcusdt@ticker'
+        ];
+        let currentIdx = 0;
+
+        function connect(url) {
+            console.log("Attempting:", url);
+            const ws = new WebSocket(url);
+            
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                targetPrice = parseFloat(data.c);
+                updateHistory(targetPrice);
+                statusDisplay.innerText = "● LIVE WEBSOCKET";
+                statusDisplay.style.color = "#00ff00";
+            };
+
+            ws.onerror = () => {
+                ws.close();
+                if(currentIdx < endpoints.length - 1) {
+                    currentIdx++;
+                    connect(endpoints[currentIdx]);
+                } else {
+                    startPollingFallback(); // Last resort
+                }
+            };
+        }
+        connect(endpoints[0]);
+    }
+
+    // Fallback: If WebSockets are blocked, fetch manually every 1s
+    function startPollingFallback() {
+        statusDisplay.innerText = "● API POLLING (REST)";
+        statusDisplay.style.color = "#f7931a";
+        setInterval(async () => {
+            try {
+                const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+                const data = await res.json();
+                targetPrice = parseFloat(data.price);
+                updateHistory(targetPrice);
+            } catch(e) { console.error("Market offline"); }
+        }, 1000);
+    }
+
+    function updateHistory(p) {
+        priceDisplay.innerText = `$${Math.floor(p).toLocaleString()}`;
+        history.push(p);
         history.shift();
-    };
+    }
 
     function drawShip(x, y, angle) {
         ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle);
-
-        // 16-Bit Detailed Sprite
-        // Hull
-        ctx.fillStyle = "#854d0e"; ctx.fillRect(-12, 0, 24, 8);
-        ctx.fillStyle = "#f7931a"; ctx.fillRect(-12, -2, 24, 2);
-        
-        // Mast & Detailed Sail
-        ctx.fillStyle = "#eee";
-        ctx.fillRect(-1, -20, 2, 18); // Mast
-        
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.moveTo(1, -19);
-        ctx.lineTo(15, -10);
-        ctx.lineTo(1, -2);
-        ctx.fill();
-        
-        // Shadow under ship
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(-10, 8, 20, 2);
-
+        ctx.translate(x, y); ctx.rotate(angle);
+        ctx.fillStyle = "#854d0e"; ctx.fillRect(-10, 0, 20, 6); // Hull
+        ctx.fillStyle = "#fff"; ctx.fillRect(-1, -18, 2, 18); // Mast
+        ctx.beginPath(); ctx.moveTo(1, -17); ctx.lineTo(12, -9); ctx.lineTo(1, -2); ctx.fill(); // Sail
         ctx.restore();
     }
 
     function render() {
-        // 1. Sky & Stars
-        ctx.fillStyle = "#0a1329";
-        ctx.fillRect(0, 0, RES_W, RES_H);
-        
+        ctx.fillStyle = "#0a1329"; ctx.fillRect(0, 0, RES_W, RES_H);
         ctx.fillStyle = "#fff";
-        stars.forEach(s => {
-            ctx.globalAlpha = 0.5 + Math.random() * 0.5;
-            ctx.fillRect(s.x, s.y, s.s, s.s);
-        });
+        stars.forEach(s => { ctx.globalAlpha = 0.3 + Math.random()*0.7; ctx.fillRect(s.x, s.y, s.s, s.s); });
         ctx.globalAlpha = 1;
 
-        // 2. Process History for Wave Scaling
         const active = history.filter(p => p > 0);
-        const min = Math.min(...active);
-        const max = Math.max(...active);
-        const range = (max - min) || 10;
+        const min = Math.min(...active) || (targetPrice - 10);
+        const max = Math.max(...active) || (targetPrice + 10);
+        const range = (max - min) || 5;
 
-        // 3. Draw Parallax Background Wave (Slower, flatter)
-        ctx.fillStyle = "#162a52";
-        for (let x = 0; x < RES_W; x += 4) {
-            const i = Math.floor((x / RES_W) * history.length);
-            const val = history[i] || targetPrice;
-            const norm = (val - min) / range;
-            const y = (RES_H * 0.75) - (norm * 20); // Background is less sensitive
-            ctx.fillRect(x, y + 10, 4, RES_H - y);
-        }
-
-        // 4. Draw Main Price Wave (Highly sensitive)
+        // Wave Logic
         ctx.fillStyle = "#26488a";
-        let shipY = RES_H * 0.7;
-        let shipAngle = 0;
+        let shipY = RES_H * 0.7; let shipAngle = 0;
 
         for (let x = 0; x < RES_W; x += 2) {
             const i = Math.floor((x / RES_W) * history.length);
             const val = history[i] || targetPrice;
             const norm = (val - min) / range;
-            
-            // Apply SENSITIVITY for dynamic "rezzed up" motion
-            const y = (RES_H * 0.7) - (norm * (20 * SENSITIVITY));
+            const y = (RES_H * 0.75) - (norm * SENSITIVITY);
             
             ctx.fillRect(x, y, 2, RES_H - y);
 
-            // Track ship's spot (right side of screen)
-            if (x === RES_W - 40) {
+            if (x === RES_W - 60) {
                 shipY = y;
-                const prevVal = history[i-1] || val;
-                const prevNorm = (prevVal - min) / range;
-                const prevY = (RES_H * 0.7) - (prevNorm * (20 * SENSITIVITY));
-                shipAngle = Math.atan2(y - prevY, 2);
+                const prevY = (RES_H * 0.75) - (((history[i-1]||val) - min) / range * SENSITIVITY);
+                shipAngle = Math.atan2(y - prevY, 2) * 0.5;
             }
         }
 
-        // 5. Place Ship
-        drawShip(RES_W - 40, shipY - 5, shipAngle);
-
+        if(targetPrice > 0) drawShip(RES_W - 60, shipY - 4, shipAngle);
         requestAnimationFrame(render);
     }
 
+    initStream();
     render();
 </script>
 </body>
