@@ -2,45 +2,46 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC SOVEREIGN: HIGH-DPI VORTEX</title>
+    <title>BTC SOVEREIGN: INTERACTIVE VORTEX</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Orbitron', sans-serif; color: #fff; }
-        #ui-main { position: absolute; top: 40px; left: 40px; z-index: 100; padding: 20px; border-left: 2px solid #fff; pointer-events: none; backdrop-filter: blur(8px); }
-        #view-toggle { position: absolute; top: 40px; right: 40px; z-index: 100; background: none; color: #fff; border: 1px solid #fff; padding: 12px 24px; cursor: pointer; font-family: 'Orbitron'; font-size: 10px; text-transform: uppercase; transition: 0.2s; }
-        #view-toggle:hover { background: #fff; color: #000; }
-        #price { font-size: 28px; font-weight: 700; margin: 0; text-shadow: 0 0 20px rgba(255,255,255,0.3); }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Orbitron', sans-serif; color: #fff; cursor: crosshair; }
+        #ui-main { position: absolute; top: 40px; left: 40px; z-index: 100; pointer-events: none; border-left: 2px solid #fff; padding-left: 15px; }
+        #data-tip { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.85); padding: 10px; border: 1px solid #444; font-size: 10px; color: #00ffaa; display: none; pointer-events: none; box-shadow: 0 0 15px rgba(0,255,170,0.2); }
+        #price { font-size: 28px; font-weight: 700; margin: 0; letter-spacing: 2px; }
         canvas { display: block; width: 100vw; height: 100vh; }
+        #view-toggle { position: absolute; top: 40px; right: 40px; z-index: 100; background: none; color: #fff; border: 1px solid #fff; padding: 10px 20px; cursor: pointer; font-family: 'Orbitron'; font-size: 10px; }
     </style>
 </head>
 <body>
 
+<div id="data-tip">DATA POINT: $0.00</div>
 <button id="view-toggle">Switch to Battlefield</button>
 <div id="ui-main">
-    <div id="price">LOADING...</div>
-    <div id="status" style="font-size: 10px; color: #777; margin-top: 5px;">32-BIT VORTEX SYNCED</div>
+    <div id="price">SYNCING...</div>
+    <div style="font-size: 9px; color: #777; margin-top: 5px;">WHALE DETECTOR: ARMED</div>
 </div>
 <canvas id="screen"></canvas>
 
 <script>
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
+    const dataTip = document.getElementById('data-tip');
     const priceDisplay = document.getElementById('price');
     
-    // High-DPI Canvas Scaling
+    let btcPrice = 0, startDayPrice = 0;
+    let stars = [], aliens = [], ships = [], explosions = [];
+    let rotation = 0, currentView = 'singularity';
+    let mouseX = 0, mouseY = 0;
+
     function resize() {
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
-        ctx.scale(dpr, dpr);
+        canvas.width = window.innerWidth * window.devicePixelRatio;
+        canvas.height = window.innerHeight * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
     window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
     resize();
-
-    let currentView = 'singularity';
-    let btcPrice = 0, startDayPrice = 0;
-    let stars = [], ships = [], explosions = [];
-    let rotation = 0;
 
     async function init() {
         const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
@@ -50,17 +51,14 @@
         const prices = candles.map(c => c[4]).reverse();
         const minP = Math.min(...prices), maxP = Math.max(...prices);
 
-        // Map stars to price with DRAMATIC amplitude
-        stars = prices.map((p, i) => {
-            const priceVariance = (p - minP) / (maxP - minP);
-            return {
-                angle: i * 0.15,
-                baseDist: 40 + (i * 1.5),
-                variance: priceVariance * 180, // Dramatically boosted
-                size: Math.random() * 2 + 1,
-                alpha: 0.1 + Math.random() * 0.5
-            };
-        });
+        stars = prices.map((p, i) => ({
+            p, // Raw price for the hover
+            angle: i * 0.14,
+            baseDist: 50 + (i * 1.4),
+            variance: ((p - minP) / (maxP - minP)) * 200,
+            size: 2,
+            screenX: 0, screenY: 0 // Updated every frame
+        }));
 
         const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
         ws.onopen = () => ws.send(JSON.stringify({ type: "subscribe", channels: ["ticker", "matches"], product_ids: ["BTC-USD"] }));
@@ -70,119 +68,95 @@
                 btcPrice = parseFloat(data.price);
                 priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
             }
-            if (data.type === 'match' && currentView === 'battle') {
-                ships.push({
-                    x: Math.random() * window.innerWidth,
-                    y: data.side === 'buy' ? window.innerHeight + 50 : -50,
-                    side: data.side,
-                    v: 3 + Math.random() * 4,
-                    size: 2 + (parseFloat(data.size) * 30)
-                });
+            if (data.type === 'match') {
+                const usdVal = parseFloat(data.price) * parseFloat(data.size);
+                // WHALE ALERT: Alien spawn if > $10,000
+                if (usdVal > 10000) {
+                    aliens.push({ x: -50, y: Math.random() * window.innerHeight, v: 4 + Math.random() * 3, phase: Math.random() * 10 });
+                }
+                if (currentView === 'battle') {
+                    ships.push({ x: Math.random()*window.innerWidth, y: data.side==='buy'?window.innerHeight+20:-20, side: data.side, v: 2+Math.random()*3, size: 2+(parseFloat(data.size)*20) });
+                }
             }
         };
     }
 
-    function drawSaturn(cx, cy, color) {
-        // Core Singularity
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 40);
-        g.addColorStop(0, '#fff');
-        g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(cx, cy, 40, 0, Math.PI * 2); ctx.fill();
-
-        // High-Fidelity Saturn Rings
+    function drawAlien(a) {
         ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(Math.PI / 10); // Tilt
-        
-        ctx.lineWidth = 1.5;
-        // Draw 3 concentric ring layers for 32-bit depth
-        for (let i = 0; i < 3; i++) {
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 + (i * 0.1)})`;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, 85 + (i * 10), 25 + (i * 3), 0, 0, Math.PI * 2);
-            ctx.stroke();
-        }
+        ctx.translate(a.x, a.y + Math.sin(a.phase) * 20);
+        // Retro UFO Shape
+        ctx.fillStyle = "#00ffaa";
+        ctx.beginPath(); ctx.ellipse(0, 0, 15, 6, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(0, -4, 5, 0, Math.PI, true); ctx.fill();
+        // Landing lights
+        ctx.fillStyle = (Date.now() % 200 > 100) ? "#ff0" : "#f00";
+        ctx.fillRect(-8, 2, 2, 2); ctx.fillRect(6, 2, 2, 2);
         ctx.restore();
+        a.x += a.v; a.phase += 0.05;
     }
 
-    function render(time) {
-        ctx.fillStyle = '#020205';
+    function render() {
+        ctx.fillStyle = '#030308';
         ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
         if (btcPrice === 0) return requestAnimationFrame(render);
 
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        rotation += 0.0015; // Slow, majestic spin
+        const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+        rotation += 0.001;
+        const color = btcPrice >= startDayPrice ? '0, 255, 170' : '255, 80, 80';
 
-        const themeColor = btcPrice >= startDayPrice ? '64, 255, 180' : '255, 80, 80';
-
-        // 1. Draw Spiral (Price Action Map)
-        stars.forEach(s => {
+        // 1. Draw Faint Connections (The Spiral "Silk")
+        ctx.strokeStyle = `rgba(${color}, 0.08)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        stars.forEach((s, i) => {
             const a = s.angle + rotation;
-            const dist = s.baseDist + s.variance;
+            const dist = (s.baseDist + s.variance);
             const x = cx + Math.cos(a) * dist * 1.8;
             const y = cy + Math.sin(a) * dist * 0.8;
+            s.screenX = x; s.screenY = y; // Save for hover
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
 
-            ctx.fillStyle = `rgba(${themeColor}, ${s.alpha})`;
-            ctx.beginPath();
-            ctx.arc(x, y, s.size, 0, Math.PI * 2);
-            ctx.fill();
+        // 2. Draw Stars & Check Hover
+        let hoveredPrice = null;
+        stars.forEach(s => {
+            ctx.fillStyle = (Math.hypot(mouseX - s.screenX, mouseY - s.screenY) < 10) ? "#fff" : `rgba(${color}, 0.6)`;
+            if (ctx.fillStyle === "#fff") hoveredPrice = s.p;
+            ctx.beginPath(); ctx.arc(s.screenX, s.screenY, s.size, 0, Math.PI * 2); ctx.fill();
         });
 
+        // Update Tooltip
+        if (hoveredPrice) {
+            dataTip.style.display = 'block';
+            dataTip.style.left = (mouseX + 15) + 'px';
+            dataTip.style.top = (mouseY + 15) + 'px';
+            dataTip.innerText = `PRICE: $${hoveredPrice.toLocaleString()}`;
+        } else { dataTip.style.display = 'none'; }
+
+        // 3. Draw Core / Battlefield
         if (currentView === 'singularity') {
-            drawSaturn(cx, cy, themeColor);
-        } else {
-            // 2. Draw Battlefield Laser & Ships
-            const midY = window.innerHeight / 2;
-            
-            // Neon Laser Core
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = `rgb(${themeColor})`;
-            ctx.strokeStyle = `rgba(${themeColor}, 0.8)`;
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(window.innerWidth, midY); ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            ships = ships.filter(s => {
-                ctx.fillStyle = s.side === 'buy' ? '#40ffb4' : '#ff5050';
-                ctx.fillRect(s.x, s.y, s.size, s.size * 2);
-                s.y += s.side === 'buy' ? -s.v : s.v;
-
-                if (Math.abs(s.y - midY) < 10) {
-                    for(let i=0; i<15; i++) {
-                        explosions.push({
-                            x: s.x, y: midY,
-                            vx: (Math.random()-0.5) * 12,
-                            vy: (Math.random()-0.5) * 12,
-                            life: 1.0, color: ctx.fillStyle
-                        });
-                    }
-                    return false;
-                }
-                return s.y > -100 && s.y < window.innerHeight + 100;
-            });
-
-            explosions = explosions.filter(e => {
-                ctx.globalAlpha = e.life;
-                ctx.fillStyle = e.color;
-                ctx.beginPath(); ctx.arc(e.x, e.y, 2, 0, Math.PI*2); ctx.fill();
-                e.x += e.vx; e.y += e.vy; e.life -= 0.025;
-                return e.life > 0;
-            });
-            ctx.globalAlpha = 1;
+            const pulse = 35 + Math.sin(Date.now()/300)*5;
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulse * 2);
+            g.addColorStop(0, '#fff'); g.addColorStop(1, 'transparent');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, pulse * 2, 0, Math.PI*2); ctx.fill();
         }
+
+        // 4. Whale Aliens
+        aliens = aliens.filter(a => {
+            drawAlien(a);
+            return a.x < window.innerWidth + 50;
+        });
 
         requestAnimationFrame(render);
     }
 
     document.getElementById('view-toggle').onclick = () => {
-        currentView = currentView === 'singularity' ? 'battle' : 'singularity';
-        document.getElementById('view-toggle').innerText = currentView === 'singularity' ? 'Switch to Battlefield' : 'Switch to Core';
+        currentView = (currentView === 'singularity') ? 'battle' : 'singularity';
     };
 
-    init();
-    render();
+    init(); render();
 </script>
 </body>
 </html>
