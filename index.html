@@ -2,23 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC COMMAND: VORTEX</title>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <title>BTC SOVEREIGN: 32-BIT VORTEX</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #fff; pointer-events: none; }
-        #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #fff; color: #000; border: none; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 8px; }
-        #price { font-size: 16px; color: #fff; margin: 0; }
-        #status { font-size: 7px; margin-top: 8px; color: #777; }
-        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Orbitron', sans-serif; color: #fff; }
+        #ui-main { position: absolute; top: 30px; left: 30px; z-index: 100; background: rgba(0,0,0,0.8); padding: 20px; border-left: 4px solid #fff; pointer-events: none; backdrop-filter: blur(5px); }
+        #view-toggle { position: absolute; top: 30px; right: 30px; z-index: 100; background: none; color: #fff; border: 1px solid #fff; padding: 12px 24px; cursor: pointer; font-family: 'Orbitron'; font-size: 10px; transition: 0.3s; }
+        #view-toggle:hover { background: #fff; color: #000; }
+        #price { font-size: 24px; letter-spacing: 2px; margin: 0; }
+        #status { font-size: 9px; margin-top: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-<button id="view-toggle">TO BATTLEFIELD</button>
+<button id="view-toggle">SWITCH TO BATTLEFIELD</button>
 <div id="ui-main">
-    <h1 id="price">SYNCING...</h1>
-    <div id="status">VORTEX: STABLE</div>
+    <div id="price">LOADING DATA...</div>
+    <div id="status">Vortex Status: Calibrating Sub-Pixels</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -26,19 +27,22 @@
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
     const priceDisplay = document.getElementById('price');
-    const statusDisplay = document.getElementById('status');
-    const viewToggle = document.getElementById('view-toggle');
-
-    const RES_W = 480; const RES_H = 270;
-    canvas.width = RES_W; canvas.height = RES_H;
+    
+    // 32-bit High Res Setup
+    function resize() {
+        canvas.width = window.innerWidth * window.devicePixelRatio;
+        canvas.height = window.innerHeight * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
     let currentView = 'singularity';
     let btcPrice = 0, startDayPrice = 0, currentVol = 0;
-    let ships = [], explosions = [], spiralStars = [];
-    let galacticRotation = 0;
-    let expansionFactor = 1; // Controls tightness of spiral
+    let ships = [], explosions = [], stars = [];
+    let rotation = 0;
 
-    async function initVortex() {
+    async function init() {
         const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
         startDayPrice = parseFloat(stats.open);
         
@@ -46,20 +50,13 @@
         const prices = candles.map(c => c[4]).reverse();
         const minP = Math.min(...prices), maxP = Math.max(...prices);
 
-        spiralStars = prices.map((p, i) => {
-            const angle = i * 0.12;
-            const priceNorm = (p - minP) / (maxP - minP);
-            return {
-                baseR: 15 + (i * 0.5), // Base radius
-                volR: priceNorm * 40,  // Price volatility offset
-                angle,
-                size: 1 + Math.random() * 1.5,
-                alpha: 0.2 + Math.random() * 0.5
-            };
-        });
-    }
+        stars = prices.map((p, i) => ({
+            angle: i * 0.1,
+            dist: 50 + (i * 1.2) + ((p - minP) / (maxP - minP) * 100),
+            size: Math.random() * 2 + 1,
+            speed: 0.001 + Math.random() * 0.002
+        }));
 
-    function initWS() {
         const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
         ws.onopen = () => ws.send(JSON.stringify({ type: "subscribe", channels: ["ticker", "matches"], product_ids: ["BTC-USD"] }));
         ws.onmessage = (e) => {
@@ -68,110 +65,107 @@
                 btcPrice = parseFloat(data.price);
                 currentVol = parseFloat(data.volume_24h);
                 priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
-                // Set spiral expansion based on current price vs daily open
-                expansionFactor = 0.8 + (Math.abs(btcPrice - startDayPrice) / 1000);
             }
-            if (data.type === 'match' && currentView === 'radar') {
-                ships.push({ x: Math.random() * RES_W, y: data.side === 'buy' ? RES_H + 20 : -20, side: data.side, vol: parseFloat(data.size), v: 1.2 + Math.random() * 1.5 });
+            if (data.type === 'match' && currentView === 'battle') {
+                ships.push({
+                    x: Math.random() * window.innerWidth,
+                    y: data.side === 'buy' ? window.innerHeight + 20 : -20,
+                    side: data.side,
+                    size: 2 + (parseFloat(data.size) * 20),
+                    v: 2 + Math.random() * 3
+                });
             }
         };
     }
 
-    viewToggle.onclick = () => {
-        currentView = (currentView === 'singularity') ? 'radar' : 'singularity';
-        viewToggle.innerText = (currentView === 'singularity') ? 'TO BATTLEFIELD' : 'TO CORE';
+    document.getElementById('view-toggle').onclick = () => {
+        currentView = currentView === 'singularity' ? 'battle' : 'singularity';
     };
 
-    function drawGalaxy(time) {
-        const cx = RES_W/2, cy = RES_H/2;
-        const color = btcPrice >= startDayPrice ? [0, 255, 136] : [255, 68, 68];
-        
-        // Slower, more majestic rotation
-        galacticRotation += 0.002;
+    function drawVortex(time) {
+        const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+        rotation += 0.002; 
+        const isUp = btcPrice >= startDayPrice;
+        const mainColor = isUp ? '64, 255, 180' : '255, 80, 80';
 
-        spiralStars.forEach(s => {
-            const rotAngle = s.angle + galacticRotation;
-            // Radius scales dynamically with expansionFactor
-            const r = (s.baseR + s.volR) * expansionFactor;
-            const x = cx + Math.cos(rotAngle) * r;
-            const y = cy + Math.sin(rotAngle) * r * 0.5;
+        stars.forEach((s, i) => {
+            const a = s.angle + rotation;
+            const x = cx + Math.cos(a) * s.dist * 1.5;
+            const y = cy + Math.sin(a) * s.dist * 0.8;
 
-            ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${s.alpha})`;
-            ctx.fillRect(Math.floor(x), Math.floor(y), s.size, s.size);
+            ctx.fillStyle = `rgba(${mainColor}, ${0.2 + Math.random() * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(x, y, s.size, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (i % 10 === 0) {
+                ctx.fillStyle = `rgba(${mainColor}, 0.02)`;
+                ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
+            }
         });
+
+        // The Core
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 60);
+        glow.addColorStop(0, '#fff');
+        glow.addColorStop(0.4, 'rgba(255,255,255,0.4)');
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI * 2); ctx.fill();
     }
 
-    function drawLaserLine(time) {
-        const y = RES_H / 2;
-        const color = btcPrice >= startDayPrice ? "0, 255, 136" : "255, 68, 68";
-        
-        // Flickering Laser Core
-        ctx.strokeStyle = `rgba(${color}, ${0.4 + Math.random() * 0.4})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(RES_W, y); ctx.stroke();
+    function drawBattlefield(time) {
+        const midY = window.innerHeight / 2;
+        const color = btcPrice >= startDayPrice ? '0, 255, 150' : '255, 50, 50';
 
-        // Laser Bloom (Glow)
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = `rgb(${color})`;
-        ctx.strokeStyle = `rgba(${color}, 0.15)`;
-        ctx.lineWidth = 4;
-        ctx.stroke();
+        // Laser Line
+        ctx.strokeStyle = `rgba(${color}, 0.8)`;
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 15; ctx.shadowColor = `rgb(${color})`;
+        ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(window.innerWidth, midY); ctx.stroke();
         ctx.shadowBlur = 0;
-    }
 
-    function render(time) {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, RES_W, RES_H);
-        if (btcPrice === 0) return requestAnimationFrame(render);
+        ships = ships.filter(s => {
+            ctx.fillStyle = s.side === 'buy' ? '#00ffaa' : '#ff4444';
+            ctx.fillRect(s.x - s.size/2, s.y, s.size, s.size * 1.5);
+            s.y += s.side === 'buy' ? -s.v : s.v;
 
-        drawGalaxy(time);
-
-        if (currentView === 'singularity') {
-            // White core with ring
-            const cx = RES_W/2, cy = RES_H/2;
-            const pulse = 20 + Math.sin(time/200)*2;
-            const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse * 2);
-            g.addColorStop(0, "#fff"); g.addColorStop(1, "transparent");
-            ctx.fillStyle = g;
-            ctx.beginPath(); ctx.arc(cx, cy, pulse * 2, 0, Math.PI*2); ctx.fill();
-            
-            ctx.strokeStyle = "rgba(255,255,255,0.3)";
-            ctx.beginPath(); ctx.ellipse(cx, cy, 60, 18, Math.PI/12, 0, Math.PI*2); ctx.stroke();
-        } else {
-            drawLaserLine(time);
-
-            ships = ships.filter(s => {
-                ctx.fillStyle = s.side === 'buy' ? "#00ff88" : "#ff4444";
-                const sz = 2 + Math.min(8, s.vol * 150);
-                ctx.fillRect(s.x - sz/2, s.y, sz, sz);
-                s.y += s.side === 'buy' ? -s.v : s.v;
-
-                // Laser Collision
-                if (Math.abs(s.y - RES_H/2) < 3) {
-                    for(let i=0; i<6; i++) {
-                        explosions.push({ 
-                            x: s.x, y: RES_H/2, 
-                            vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, 
-                            life: 1.0, color: ctx.fillStyle 
-                        });
-                    }
-                    return false; // Ship destroyed
+            if (Math.abs(s.y - midY) < 5) {
+                for(let i=0; i<12; i++) {
+                    explosions.push({
+                        x: s.x, y: midY,
+                        vx: (Math.random()-0.5) * 10, vy: (Math.random()-0.5) * 10,
+                        life: 1.0, color: ctx.fillStyle
+                    });
                 }
-                return s.y > -50 && s.y < RES_H + 50;
-            });
+                return false;
+            }
+            return s.y > -50 && s.y < window.innerHeight + 50;
+        });
 
-            explosions = explosions.filter(e => {
-                ctx.fillStyle = e.color; ctx.globalAlpha = e.life;
-                ctx.fillRect(e.x, e.y, 2, 2);
-                e.x += e.vx; e.y += e.vy; e.life -= 0.04;
-                return e.life > 0;
-            });
-            ctx.globalAlpha = 1;
-        }
-        requestAnimationFrame(render);
+        explosions = explosions.filter(e => {
+            ctx.globalAlpha = e.life;
+            ctx.fillStyle = e.color;
+            ctx.beginPath(); ctx.arc(e.x, e.y, 2, 0, Math.PI*2); ctx.fill();
+            e.x += e.vx; e.y += e.vy; e.life -= 0.02;
+            return e.life > 0;
+        });
+        ctx.globalAlpha = 1;
     }
 
-    initVortex(); initWS(); render();
+    function frame(time) {
+        ctx.fillStyle = '#050508';
+        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        
+        if (btcPrice !== 0) {
+            drawVortex(time);
+            if (currentView === 'battle') drawBattlefield(time);
+        }
+        
+        requestAnimationFrame(frame);
+    }
+
+    init();
+    frame();
 </script>
 </body>
 </html>
