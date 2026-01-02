@@ -2,56 +2,59 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SOVEREIGN: REALITY WARP</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Grenze+Gotisch:wght@400;700&family=IM+Fell+DW+Pica&display=swap" rel="stylesheet">
+    <title>BTC SOVEREIGN: COMMAND DECK V6</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono:wght@300&display=swap" rel="stylesheet">
     <style>
-        /* Theme Variables */
-        :root {
-            --bg: #010103; --accent: #00f7ff; --panel: rgba(10, 10, 20, 0.85);
-            --font-main: 'Orbitron', sans-serif;
-        }
-        .theme-alchemy {
-            --bg: #0a0806; --accent: #d4af37; --panel: rgba(25, 20, 15, 0.95);
-            --font-main: 'IM Fell DW Pica', serif;
-        }
-
-        body { margin: 0; overflow: hidden; background: var(--bg); font-family: var(--font-main); color: #fff; transition: background 1s ease; }
+        :root { --neon-cyan: #00f7ff; --neon-red: #ff3131; --glass: rgba(10, 10, 20, 0.85); }
+        body { margin: 0; overflow: hidden; background: #010103; font-family: 'Orbitron', sans-serif; color: #fff; cursor: crosshair; }
         
-        /* UI Layers */
+        /* Fixed Warp Button: High Z-Index & Clear Placement */
+        #view-toggle { 
+            position: absolute; top: 30px; right: 30px; z-index: 9999; /* Highest layer */
+            background: rgba(0,0,0,0.5); color: #fff; border: 1px solid var(--neon-cyan); 
+            padding: 12px 24px; cursor: pointer; font-family: 'Orbitron'; font-size: 11px; 
+            letter-spacing: 2px; transition: all 0.2s; backdrop-filter: blur(5px);
+        }
+        #view-toggle:hover { background: var(--neon-cyan); color: #000; box-shadow: 0 0 20px var(--neon-cyan); }
+
         .glass-panel { 
-            position: absolute; background: var(--panel); backdrop-filter: blur(15px); 
-            border: 1px solid rgba(255,255,255,0.1); padding: 20px; z-index: 100;
+            position: absolute; background: var(--glass); backdrop-filter: blur(15px); 
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 2px; padding: 20px; z-index: 100;
         }
-        #ui-top-left { top: 30px; left: 30px; border-left: 3px solid var(--accent); width: 280px; }
-        #ui-bottom-log { bottom: 30px; left: 30px; width: 380px; height: 160px; overflow: hidden; display: flex; flex-direction: column-reverse; }
 
-        /* Buttons */
-        .ctrl-btn {
-            position: absolute; z-index: 9999; background: rgba(0,0,0,0.5); color: #fff; 
-            border: 1px solid var(--accent); padding: 10px 20px; cursor: pointer; 
-            font-family: inherit; font-size: 10px; letter-spacing: 2px; transition: 0.3s;
+        #ui-top-left { top: 30px; left: 30px; border-left: 3px solid var(--neon-cyan); width: 280px; }
+        
+        #ui-bottom-log { 
+            bottom: 30px; left: 30px; width: 380px; height: 160px; 
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; overflow: hidden;
+            display: flex; flex-direction: column-reverse; border-bottom: 2px solid rgba(255,255,255,0.1);
         }
-        #view-toggle { top: 30px; right: 30px; }
-        #theme-toggle { top: 80px; right: 30px; border-color: #ff00ff; }
-        #theme-toggle:hover { background: #ff00ff; color: #000; box-shadow: 0 0 20px #ff00ff; }
 
-        #price { font-size: 32px; font-weight: 700; color: var(--accent); }
-        .log-entry { font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); color: #888; }
+        #data-tip { 
+            position: absolute; background: #fff; color: #000; padding: 4px 10px; 
+            font-size: 11px; font-weight: bold; pointer-events: none; display: none; z-index: 1000; 
+        }
+
+        #price { font-size: 32px; font-weight: 700; margin: 0; color: var(--neon-cyan); }
+        .log-entry { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.03); color: #888; white-space: nowrap; }
+        .log-whale { color: #00f7ff; font-weight: bold; text-shadow: 0 0 10px rgba(0,247,255,0.4); }
         
         canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-<button id="view-toggle" class="ctrl-btn">WARP TO BATTLEFIELD</button>
-<button id="theme-toggle" class="ctrl-btn">WARP REALITY</button>
+<div id="data-tip"></div>
+<button id="view-toggle">WARP TO BATTLEFIELD</button>
 
 <div id="ui-top-left" class="glass-panel">
-    <div id="feed-label" style="font-size: 8px; color: #555; margin-bottom: 5px;">COORDINATE STREAM</div>
+    <div style="font-size: 8px; color: #555; margin-bottom: 5px; letter-spacing: 3px;">LIVE FEED</div>
     <div id="price">...</div>
+    <div id="market-status" style="font-size: 9px; color: #333; margin-top: 10px;">ENGINE: 32-BIT VORTEX</div>
 </div>
 
 <div id="ui-bottom-log" class="glass-panel"></div>
+
 <canvas id="screen"></canvas>
 
 <script>
@@ -59,26 +62,24 @@
     const ctx = canvas.getContext('2d');
     const priceDisplay = document.getElementById('price');
     const logContainer = document.getElementById('ui-bottom-log');
+    const dataTip = document.getElementById('data-tip');
+    const viewBtn = document.getElementById('view-toggle');
     
-    let currentTheme = 'space'; // 'space' or 'alchemy'
-    let currentView = 'singularity';
-    let btcPrice = 0, stars = [], ships = [], explosions = [];
-    let rotation = 0, mouseX = 0, mouseY = 0;
+    let btcPrice = 0, startDayPrice = 0, dpr = window.devicePixelRatio || 1;
+    let stars = [], aliens = [], ships = [], explosions = [];
+    let rotation = 0, currentView = 'singularity', mouseX = 0, mouseY = 0;
 
-    // --- LOGIC: Theme Toggle ---
-    document.getElementById('theme-toggle').onclick = () => {
-        currentTheme = (currentTheme === 'space') ? 'alchemy' : 'space';
-        document.body.className = currentTheme === 'alchemy' ? 'theme-alchemy' : '';
-        document.getElementById('feed-label').innerText = currentTheme === 'alchemy' ? 'ALCHEMY DIVINATION' : 'COORDINATE STREAM';
-        document.getElementById('view-toggle').innerText = currentTheme === 'alchemy' ? 'GO TO THE WILDERNESS' : 'WARP TO BATTLEFIELD';
-    };
-
-    document.getElementById('view-toggle').onclick = () => {
+    // View Switching Logic
+    viewBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent event bubbling
         currentView = (currentView === 'singularity') ? 'battle' : 'singularity';
-    };
+        viewBtn.innerText = currentView === 'singularity' ? 'WARP TO BATTLEFIELD' : 'RETURN TO CORE';
+        // Visual feedback
+        viewBtn.style.borderColor = currentView === 'singularity' ? '#00f7ff' : '#ff3131';
+    });
 
     function resize() {
-        const dpr = window.devicePixelRatio || 1;
+        dpr = window.devicePixelRatio || 1;
         canvas.width = window.innerWidth * dpr;
         canvas.height = window.innerHeight * dpr;
         ctx.scale(dpr, dpr);
@@ -87,16 +88,28 @@
     window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
     resize();
 
+    function addLog(side, size, price) {
+        const val = size * price;
+        const div = document.createElement('div');
+        div.className = 'log-entry' + (val > 10000 ? ' log-whale' : '');
+        div.innerHTML = `> ${side.toUpperCase()} ${size.toFixed(3)} BTC @ $${price.toLocaleString()}`;
+        logContainer.prepend(div);
+        if (logContainer.childNodes.length > 15) logContainer.lastChild.remove();
+    }
+
     async function init() {
+        const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
+        startDayPrice = parseFloat(stats.open);
         const candles = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300').then(r => r.json());
         const prices = candles.map(c => c[4]).reverse();
         const minP = Math.min(...prices), maxP = Math.max(...prices);
 
         stars = prices.map((p, i) => ({
             p, angle: i * 0.14,
-            baseDist: 60 + (i * 1.6),
-            variance: ((p - minP) / (maxP - minP)) * 240,
-            size: 2
+            baseDist: 60 + (i * 1.7),
+            variance: ((p - minP) / (maxP - minP)) * 260,
+            size: 2,
+            screenX: 0, screenY: 0
         }));
 
         const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
@@ -105,54 +118,111 @@
             const data = JSON.parse(e.data);
             if (data.type === 'ticker') {
                 btcPrice = parseFloat(data.price);
-                priceDisplay.innerText = (currentTheme === 'alchemy' ? '℥ ' : '$') + btcPrice.toLocaleString();
+                priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
+                priceDisplay.style.color = btcPrice >= startDayPrice ? '#00f7ff' : '#ff3131';
             }
             if (data.type === 'match') {
-                const div = document.createElement('div');
-                div.className = 'log-entry';
-                const verb = currentTheme === 'alchemy' ? 'Transmuted' : 'Traded';
-                div.innerHTML = `> ${data.size} BTC ${verb} @ ${data.price}`;
-                logContainer.prepend(div);
-                if (logContainer.childNodes.length > 10) logContainer.lastChild.remove();
-                
+                const usdVal = parseFloat(data.price) * parseFloat(data.size);
+                addLog(data.side, parseFloat(data.size), parseFloat(data.price));
+                if (usdVal > 10000) {
+                    aliens.push({ x: -100, y: Math.random() * window.innerHeight, v: 5 + Math.random() * 5, phase: 0 });
+                }
                 if (currentView === 'battle') {
-                    ships.push({ x: Math.random()*window.innerWidth, y: data.side==='buy'?window.innerHeight+20:-20, side: data.side, v: 4, size: 4 });
+                    ships.push({ x: Math.random()*window.innerWidth, y: data.side==='buy'?window.innerHeight+20:-20, side: data.side, v: 3+Math.random()*4, size: 2+(parseFloat(data.size)*30) });
                 }
             }
         };
     }
 
+    function drawAlien(a) {
+        ctx.save();
+        ctx.translate(a.x, a.y + Math.sin(a.phase) * 40);
+        ctx.fillStyle = "#00f7ff";
+        ctx.beginPath(); ctx.ellipse(0, 0, 22, 7, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath(); ctx.arc(0, -5, 8, 0, Math.PI, true); ctx.fill();
+        ctx.restore();
+        a.x += a.v; a.phase += 0.08;
+    }
+
     function render() {
-        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
+        ctx.fillStyle = '#010103';
         ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        if (btcPrice === 0) return requestAnimationFrame(render);
 
         const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-        rotation += 0.001;
-        
-        const accentColor = getComputedStyle(document.body).getPropertyValue('--accent');
+        rotation += 0.0006;
+        const color = btcPrice >= startDayPrice ? '0, 247, 255' : '255, 49, 49';
 
-        // Draw Spiral
-        ctx.strokeStyle = currentTheme === 'alchemy' ? 'rgba(212, 175, 55, 0.1)' : 'rgba(0, 247, 255, 0.1)';
+        // 1. Neural Silk
+        ctx.strokeStyle = `rgba(${color}, 0.12)`;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         stars.forEach((s, i) => {
             const a = s.angle + rotation;
             const d = s.baseDist + s.variance;
-            const x = cx + Math.cos(a) * d * 2;
-            const y = cy + Math.sin(a) * d * 0.9;
+            const x = cx + Math.cos(a) * d * 2.1;
+            const y = cy + Math.sin(a) * d * 0.95;
+            s.screenX = x; s.screenY = y;
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            
-            ctx.fillStyle = accentColor;
-            ctx.fillRect(x-1, y-1, s.size, s.size);
         });
         ctx.stroke();
 
-        // Singularity / Pool
+        // 2. Stars & Hover
+        let hovered = null;
+        stars.forEach(s => {
+            const isH = Math.hypot(mouseX - s.screenX, mouseY - s.screenY) < 8;
+            ctx.fillStyle = isH ? "#fff" : `rgba(${color}, 0.6)`;
+            if (isH) hovered = s.p;
+            ctx.beginPath(); ctx.arc(s.screenX, s.screenY, isH ? 4 : s.size, 0, Math.PI*2); ctx.fill();
+        });
+
+        if (hovered) {
+            dataTip.style.display = 'block';
+            dataTip.style.left = (mouseX + 20) + 'px';
+            dataTip.style.top = (mouseY - 30) + 'px';
+            dataTip.innerText = `$${hovered.toLocaleString()}`;
+        } else { dataTip.style.display = 'none'; }
+
+        // 3. Central Core
         if (currentView === 'singularity') {
-            const pulse = 40 + Math.sin(Date.now()/500)*5;
-            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulse * 2);
-            g.addColorStop(0, currentTheme === 'alchemy' ? 'rgba(74, 144, 226, 0.4)' : '#fff');
-            g.addColorStop(1, 'transparent');
-            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, pulse * 2, 0, Math.PI*2); ctx.fill();
+            const pulse = 45 + Math.sin(Date.now()/600)*4;
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulse * 2.2);
+            g.addColorStop(0, '#fff'); g.addColorStop(1, 'transparent');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, pulse * 2.2, 0, Math.PI*2); ctx.fill();
+            
+            ctx.strokeStyle = `rgba(255,255,255,0.1)`;
+            ctx.beginPath(); ctx.ellipse(cx, cy, 150, 45, Math.PI/10, 0, Math.PI*2); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(cx, cy, 180, 55, Math.PI/10, 0, Math.PI*2); ctx.stroke();
+        }
+
+        aliens.forEach(drawAlien);
+        aliens = aliens.filter(a => a.x < window.innerWidth + 100);
+
+        // 4. Battlefield View
+        if (currentView === 'battle') {
+            const midY = window.innerHeight / 2;
+            ctx.strokeStyle = `rgba(${color}, 0.6)`;
+            ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(window.innerWidth, midY); ctx.stroke();
+            
+            ships = ships.filter(s => {
+                ctx.fillStyle = s.side === 'buy' ? '#00f7ff' : '#ff3131';
+                ctx.fillRect(s.x, s.y, s.size, s.size*3);
+                s.y += s.side === 'buy' ? -s.v : s.v;
+                if (Math.abs(s.y - midY) < 12) {
+                    for(let i=0; i<10; i++) explosions.push({ x: s.x, y: midY, vx: (Math.random()-0.5)*18, vy: (Math.random()-0.5)*18, life: 1.0, color: ctx.fillStyle });
+                    return false;
+                }
+                return s.y > -100 && s.y < window.innerHeight+100;
+            });
+
+            explosions = explosions.filter(e => {
+                ctx.globalAlpha = e.life; ctx.fillStyle = e.color;
+                ctx.beginPath(); ctx.arc(e.x, e.y, 2, 0, Math.PI*2); ctx.fill();
+                e.x += e.vx; e.y += e.vy; e.life -= 0.04;
+                return e.life > 0;
+            });
+            ctx.globalAlpha = 1;
         }
 
         requestAnimationFrame(render);
