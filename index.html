@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC NAVIGATOR: FAIL-SAFE</title>
+    <title>BTC NAVIGATOR: HYBRID BYPASS</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; box-shadow: 0 0 15px #5e43f3; }
+        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; }
         #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #5e43f3; color: #fff; border: 4px solid #fff; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
         #price { font-size: 18px; color: #fff; margin: 0; }
         #status { font-size: 7px; margin-top: 10px; color: #00ffcc; text-transform: uppercase; }
@@ -18,9 +18,9 @@
 <button id="view-toggle">GO TO RADAR</button>
 
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: BTC/USD</div>
+    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: AUTO-SCAN</div>
     <h1 id="price">SCANNING...</h1>
-    <div id="status">INITIALIZING FAIL-SAFE...</div>
+    <div id="status">BYPASSING FIREWALL...</div>
 </div>
 
 <canvas id="screen"></canvas>
@@ -31,40 +31,64 @@
     const priceDisplay = document.getElementById('price');
     const statusDisplay = document.getElementById('status');
     const viewToggle = document.getElementById('view-toggle');
-    const viewLabel = document.getElementById('view-label');
 
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
     let currentView = 'singularity';
     let btcPrice = 0, lastPrice = 0;
-    let stars = Array.from({length: 60}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.2+Math.random()*0.4 }));
+    let asks = [], bids = [];
+    let stars = Array.from({length: 40}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.3+Math.random()*0.5 }));
 
-    // --- FAIL-SAFE DATA POLLING ---
-    async function fetchData() {
-        try {
-            // Using a standard public API that bypasses WebSocket blocks
-            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_vol=true');
-            const data = await response.json();
-            
-            lastPrice = btcPrice;
-            btcPrice = data.bitcoin.usd;
-            
-            priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
-            statusDisplay.innerText = "SIGNAL STABLE (HTTP-TUNNEL)";
-        } catch (e) {
-            statusDisplay.innerText = "RETRIEVING DATA...";
-        }
+    // --- MULTI-GATEWAY DATA ENGINE ---
+    function initHybridData() {
+        // DOOR 1: BINANCE (Primary)
+        const wsBinance = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@ticker');
+        wsBinance.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            updatePrice(parseFloat(data.c), "BINANCE-WS");
+        };
+
+        // DOOR 2: COINBASE (Secondary - often bypasses proxies)
+        const wsCoinbase = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+        wsCoinbase.onopen = () => wsCoinbase.send(JSON.stringify({type:"subscribe",channels:[{name:"ticker",product_ids:["BTC-USD"]}]}));
+        wsCoinbase.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if(data.price) updatePrice(parseFloat(data.price), "COINBASE-WS");
+        };
+
+        // DOOR 3: FAIL-SAFE POLLING (The "Unblockable" HTTP Tunnel)
+        setInterval(async () => {
+            if (Date.now() - lastUpdate > 10000) { // Only if WS fails for 10s
+                try {
+                    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+                    const data = await res.json();
+                    updatePrice(parseFloat(data.price), "HTTP-TUNNEL");
+                } catch(e) {}
+            }
+        }, 5000);
     }
 
-    // Update every 5 seconds (standard for public APIs)
-    setInterval(fetchData, 5000);
-    fetchData();
+    let lastUpdate = 0;
+    function updatePrice(p, source) {
+        lastUpdate = Date.now();
+        lastPrice = btcPrice;
+        btcPrice = p;
+        priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
+        statusDisplay.innerText = `SIGNAL: ${source}`;
+        
+        // Mock orderbook if live depth is blocked
+        if (asks.length === 0) {
+            for(let i=0; i<10; i++) {
+                asks[i] = [btcPrice + (i*10), Math.random()*2];
+                bids[i] = [btcPrice - (i*10), Math.random()*2];
+            }
+        }
+    }
 
     viewToggle.onclick = () => {
         currentView = currentView === 'singularity' ? 'radar' : 'singularity';
         viewToggle.innerText = currentView === 'singularity' ? 'GO TO RADAR' : 'GO TO SINGULARITY';
-        viewLabel.innerText = currentView === 'singularity' ? 'CORE: SINGULARITY' : 'CORE: RADAR';
     };
 
     function render(time) {
@@ -72,41 +96,43 @@
         ctx.fillRect(0, 0, RES_W, RES_H);
 
         // Stars
-        ctx.fillStyle = "#444";
         stars.forEach(s => {
             s.x = (s.x - s.v + RES_W) % RES_W;
+            ctx.fillStyle = "#333";
             ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
         });
 
-        const centerX = RES_W / 2;
-        const centerY = RES_H / 2;
-
-        if (currentView === 'singularity') {
-            const pulse = 24 + Math.sin(time / 250) * 4;
-            const grad = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse * 1.5);
-            grad.addColorStop(0, "#fff");
-            grad.addColorStop(0.3, btcPrice >= lastPrice ? "#00ff88" : "#ff4444");
-            grad.addColorStop(1, "transparent");
-            ctx.fillStyle = grad;
-            ctx.fillRect(centerX - 80, centerY - 80, 160, 160);
+        if (btcPrice === 0) {
+            ctx.fillStyle = "#5e43f3";
+            ctx.fillText("SEARCHING FOR DATA...", 140, 140);
         } else {
-            // Simulated Radar View (since Order Books usually require WebSockets)
-            // We use the price to seed a pixelated "Radar Grid"
-            ctx.strokeStyle = "#5e43f3";
-            ctx.lineWidth = 0.5;
-            for(let i=0; i<5; i++) {
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, (time/20 + i*40) % 150, 0, Math.PI*2);
-                ctx.stroke();
+            const centerX = RES_W/2, centerY = RES_H/2;
+            if (currentView === 'singularity') {
+                const pulse = 25 + Math.sin(time/200)*5;
+                const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*1.8);
+                g.addColorStop(0, "#fff");
+                g.addColorStop(0.4, btcPrice >= lastPrice ? "#00ff88" : "#ff4444");
+                g.addColorStop(1, "transparent");
+                ctx.fillStyle = g;
+                ctx.fillRect(centerX-100, centerY-100, 200, 200);
+            } else {
+                // RADAR VIEW
+                asks.forEach((lvl, i) => {
+                    ctx.fillStyle = "#ff4444";
+                    ctx.fillRect(40 + (i*40), centerY - 40 - (Math.sin(time/500 + i)*10), 10, 5);
+                });
+                bids.forEach((lvl, i) => {
+                    ctx.fillStyle = "#00ff88";
+                    ctx.fillRect(40 + (i*40), centerY + 40 + (Math.cos(time/500 + i)*10), 10, 5);
+                });
+                ctx.strokeStyle = "rgba(94,67,243,0.3)";
+                ctx.strokeRect(20, centerY-5, RES_W-40, 10);
             }
-            ctx.fillStyle = "#00ffcc";
-            ctx.fillRect(centerX + Math.cos(time/1000)*60, centerY + Math.sin(time/1000)*60, 4, 4);
-            ctx.fillText("SCANNING DEPTH...", 20, RES_H - 20);
         }
-
         requestAnimationFrame(render);
     }
 
+    initHybridData();
     render();
 </script>
 </body>
