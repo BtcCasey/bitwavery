@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC SINGULARITY: RADAR v2</title>
+    <title>BTC SINGULARITY: STRATEGIC COMMAND</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; }
+        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; box-shadow: 0 0 15px #5e43f3; }
         #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #5e43f3; color: #fff; border: 4px solid #fff; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
         #price { font-size: 18px; color: #fff; margin: 0; }
         #status { font-size: 7px; margin-top: 10px; color: #00ffcc; text-transform: uppercase; }
@@ -17,9 +17,9 @@
 
 <button id="view-toggle">GO TO RADAR</button>
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: AUTO-SCAN</div>
-    <h1 id="price">SCANNING...</h1>
-    <div id="status">BYPASSING FIREWALL...</div>
+    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SIGNAL: COINBASE-L2</div>
+    <h1 id="price">SYNCING...</h1>
+    <div id="status">ESTABLISHING SECURE LINK...</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -33,50 +33,71 @@
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
+    // --- STATE ---
     let currentView = 'singularity';
-    let btcPrice = 0, lastPrice = 0;
-    let asks = [], bids = [];
-    let effects = [];
-    let trail = []; // The Comet Tail
-    let stars = Array.from({length: 40}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.3+Math.random()*0.5 }));
+    let btcPrice = 0, lerpPrice = 0;
+    let sentimentColor = {r: 94, g: 67, b: 243}; // Default Purple
+    let asks = [], bids = [], lasers = [];
+    let history = []; // The 60-minute price trail
+    let stars = Array.from({length: 40}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.1+Math.random()*0.2 }));
 
-    // --- EFFECT CLASSES ---
-    class PulsarWave { constructor() { this.r = 10; this.life = 1.0; } update() { this.r += 3.5; this.life -= 0.02; } draw() { ctx.strokeStyle = `rgba(255,255,255,${this.life})`; ctx.beginPath(); ctx.arc(RES_W/2, RES_H/2, this.r, 0, Math.PI*2); ctx.stroke(); } }
+    // --- HELPER: COLOR LERP ---
+    function lerp(start, end, t) { return start + (end - start) * t; }
+    function updateSentiment(targetR, targetG, targetB) {
+        sentimentColor.r = lerp(sentimentColor.r, targetR, 0.05);
+        sentimentColor.g = lerp(sentimentColor.g, targetG, 0.05);
+        sentimentColor.b = lerp(sentimentColor.b, targetB, 0.05);
+    }
 
-    // --- LIVE DATA ENGINE (COINBASE BYPASS) ---
-    function initLive() {
+    // --- DATA ENGINE ---
+    function init() {
         const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com');
         ws.onopen = () => {
             ws.send(JSON.stringify({
                 type: "subscribe",
-                channels: [{ name: "ticker", product_ids: ["BTC-USD"] }, { name: "level2", product_ids: ["BTC-USD"] }]
+                channels: ["ticker", "level2_batch", "matches"],
+                product_ids: ["BTC-USD"]
             }));
         };
 
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
+            
+            // 1. PRICE UPDATES
             if (data.type === 'ticker') {
-                const newPrice = parseFloat(data.price);
-                if (btcPrice > 0) {
-                    // Trigger Barrier Events
-                    if (Math.floor(newPrice/100) !== Math.floor(btcPrice/100)) effects.push(new PulsarWave());
+                const p = parseFloat(data.price);
+                if (btcPrice !== 0) {
+                    if (p > btcPrice) updateSentiment(0, 255, 136); // Green
+                    else if (p < btcPrice) updateSentiment(255, 68, 68); // Red
                 }
-                lastPrice = btcPrice;
-                btcPrice = newPrice;
+                btcPrice = p;
                 priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
-                statusDisplay.innerText = "SIGNAL: COINBASE-WS LIVE";
+                statusDisplay.innerText = "SIGNAL: LIVE FEED";
+                
+                // Add to history (1 point per update, trimmed to ~3600 for an hour if updates are 1s)
+                history.push(btcPrice);
+                if (history.length > 300) history.shift(); 
             }
 
-            // Real Order Book Depth
+            // 2. ORDER BOOK (RADAR)
             if (data.type === 'snapshot') {
-                asks = data.asks.slice(0, 10);
-                bids = data.bids.slice(0, 10);
+                asks = data.asks.slice(0, 15);
+                bids = data.bids.slice(0, 15);
             }
             if (data.type === 'l2update') {
-                // Simplified update for performance
-                data.changes.forEach(change => {
-                    const side = change[0], price = change[1], size = change[2];
-                    if (side === 'sell') asks[0] = [price, size]; else bids[0] = [price, size];
+                data.changes.forEach(c => {
+                    const side = c[0], p = parseFloat(c[1]), sz = parseFloat(c[2]);
+                    if (side === 'sell') asks[0] = [p, sz]; else bids[0] = [p, sz];
+                });
+            }
+
+            // 3. TRADES (LASERS)
+            if (data.type === 'match') {
+                lasers.push({
+                    x: Math.random() * RES_W,
+                    side: data.side, // 'buy' or 'sell'
+                    life: 1.0,
+                    size: parseFloat(data.size)
                 });
             }
         };
@@ -91,62 +112,78 @@
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // Stars
+        // Slow Background Stars
         stars.forEach(s => {
             s.x = (s.x - s.v + RES_W) % RES_W;
-            ctx.fillStyle = "#333";
+            ctx.fillStyle = "#222";
             ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
         });
 
-        if (btcPrice === 0) {
-            ctx.fillStyle = "#5e43f3";
-            ctx.fillText("CONNECTING TO FEED...", 140, 140);
+        if (btcPrice === 0) return requestAnimationFrame(render);
+
+        const centerX = RES_W/2, centerY = RES_H/2;
+        const sCol = `rgb(${sentimentColor.r},${sentimentColor.g},${sentimentColor.b})`;
+
+        if (currentView === 'singularity') {
+            // --- THE 60-MIN HISTORICAL TRAIL ---
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(${sentimentColor.r},${sentimentColor.g},${sentimentColor.b}, 0.3)`;
+            ctx.lineWidth = 2;
+            history.forEach((h, i) => {
+                const ratio = i / history.length;
+                const tx = centerX - (history.length - i) * 1.5;
+                const ty = centerY + (btcPrice - h) * 0.5;
+                if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+            });
+            ctx.stroke();
+
+            // --- THE SINGULARITY ---
+            const pulse = 25 + Math.sin(time/200)*5;
+            const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*1.8);
+            g.addColorStop(0, "#fff");
+            g.addColorStop(0.4, sCol);
+            g.addColorStop(1, "transparent");
+            ctx.fillStyle = g;
+            ctx.fillRect(centerX-100, centerY-100, 200, 200);
+
         } else {
-            const centerX = RES_W/2, centerY = RES_H/2;
-
-            if (currentView === 'singularity') {
-                // --- THE COMET TAIL ---
-                trail.push({x: centerX, y: centerY + Math.sin(time/400)*15});
-                if (trail.length > 25) trail.shift();
-                trail.forEach((p, i) => {
-                    ctx.strokeStyle = btcPrice >= lastPrice ? `rgba(0, 255, 136, ${i/25})` : `rgba(255, 68, 68, ${i/25})`;
-                    ctx.lineWidth = i/3;
-                    ctx.beginPath(); ctx.arc(p.x - (25-i)*5, p.y, i/5, 0, Math.PI*2); ctx.stroke();
-                });
-
-                // --- THE CORE ---
-                const pulse = 25 + Math.sin(time/200)*5;
-                const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*1.8);
-                g.addColorStop(0, "#fff");
-                g.addColorStop(0.4, btcPrice >= lastPrice ? "#00ff88" : "#ff4444");
-                g.addColorStop(1, "transparent");
-                ctx.fillStyle = g;
-                ctx.fillRect(centerX-100, centerY-100, 200, 200);
-            } else {
-                // --- LIVE RADAR (ORDER BOOK) ---
-                const spreadGap = 20;
-                asks.forEach((lvl, i) => {
-                    const price = parseFloat(lvl[0]);
-                    const vol = Math.min(20, parseFloat(lvl[1]) * 10);
-                    const y = centerY - spreadGap - (i * 12) - (price - btcPrice);
-                    ctx.fillStyle = "#ff4444";
-                    ctx.fillRect(40 + (i*40), y, 10 + vol, 5); // Enemies size = Volume
-                });
-                bids.forEach((lvl, i) => {
-                    const price = parseFloat(lvl[0]);
-                    const vol = Math.min(20, parseFloat(lvl[1]) * 10);
-                    const y = centerY + spreadGap + (i * 12) + (btcPrice - price);
-                    ctx.fillStyle = "#00ff88";
-                    ctx.fillRect(40 + (i*40), y, 10 + vol, 4); // Defenders size = Volume
-                });
-            }
+            // --- RADAR VIEW ---
+            const spreadGap = 30;
+            // Draw Asks (Enemies)
+            asks.forEach((lvl, i) => {
+                const p = parseFloat(lvl[0]), vol = Math.min(30, parseFloat(lvl[1]) * 15);
+                const y = centerY - spreadGap - (i * 10) - (p - btcPrice)*0.5;
+                ctx.fillStyle = "#ff4444";
+                ctx.fillRect(30 + (i*30), y, 8 + vol, 4);
+            });
+            // Draw Bids (Defenders)
+            bids.forEach((lvl, i) => {
+                const p = parseFloat(lvl[0]), vol = Math.min(30, parseFloat(lvl[1]) * 15);
+                const y = centerY + spreadGap + (i * 10) + (btcPrice - p)*0.5;
+                ctx.fillStyle = "#00ff88";
+                ctx.fillRect(30 + (i*30), y, 8 + vol, 3);
+            });
         }
 
-        effects = effects.filter(e => { e.update(); e.draw(); return e.life > 0; });
+        // --- THE LASERS (TRADE EVENTS) ---
+        lasers = lasers.filter(l => {
+            ctx.strokeStyle = l.side === 'buy' ? `rgba(0, 255, 136, ${l.life})` : `rgba(255, 68, 68, ${l.life})`;
+            ctx.lineWidth = Math.min(3, l.size * 5);
+            ctx.beginPath();
+            if (l.side === 'buy') { // Laser shoots up
+                ctx.moveTo(l.x, RES_H); ctx.lineTo(l.x, RES_H - (1 - l.life)*RES_H);
+            } else { // Laser shoots down
+                ctx.moveTo(l.x, 0); ctx.lineTo(l.x, (1 - l.life)*RES_H);
+            }
+            ctx.stroke();
+            l.life -= 0.05;
+            return l.life > 0;
+        });
+
         requestAnimationFrame(render);
     }
 
-    initLive();
+    init();
     render();
 </script>
 </body>
