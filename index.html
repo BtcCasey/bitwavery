@@ -6,10 +6,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #fff; pointer-events: none; }
-        #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #fff; color: #000; border: none; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
-        #price { font-size: 18px; color: #fff; margin: 0; }
-        #status { font-size: 7px; margin-top: 10px; color: #777; text-transform: uppercase; }
+        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #fff; pointer-events: none; }
+        #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #fff; color: #000; border: none; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 8px; }
+        #price { font-size: 16px; color: #fff; margin: 0; }
+        #status { font-size: 7px; margin-top: 8px; color: #777; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
     </style>
 </head>
@@ -17,9 +17,8 @@
 
 <button id="view-toggle">TO BATTLEFIELD</button>
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #fff; margin-bottom: 8px;">VORTEX PROTOCOL: ONLINE</div>
     <h1 id="price">SYNCING...</h1>
-    <div id="status">TWISTING SPACE-TIME TO PRICE...</div>
+    <div id="status">VORTEX: STABLE</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -37,6 +36,7 @@
     let btcPrice = 0, startDayPrice = 0, currentVol = 0;
     let ships = [], explosions = [], spiralStars = [];
     let galacticRotation = 0;
+    let expansionFactor = 1; // Controls tightness of spiral
 
     async function initVortex() {
         const stats = await fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats').then(r => r.json());
@@ -46,16 +46,15 @@
         const prices = candles.map(c => c[4]).reverse();
         const minP = Math.min(...prices), maxP = Math.max(...prices);
 
-        // Map price history to spiral coordinates: r = a * theta
         spiralStars = prices.map((p, i) => {
-            const angle = i * 0.15; // Spiral expansion rate
+            const angle = i * 0.12;
             const priceNorm = (p - minP) / (maxP - minP);
-            const r = 20 + (i * 0.6) + (priceNorm * 30); // Radius based on time + price volatility
             return {
-                r, angle,
-                size: 1 + Math.random() * 2,
-                alpha: 0.2 + Math.random() * 0.6,
-                isNebula: i % 15 === 0
+                baseR: 15 + (i * 0.5), // Base radius
+                volR: priceNorm * 40,  // Price volatility offset
+                angle,
+                size: 1 + Math.random() * 1.5,
+                alpha: 0.2 + Math.random() * 0.5
             };
         });
     }
@@ -69,82 +68,102 @@
                 btcPrice = parseFloat(data.price);
                 currentVol = parseFloat(data.volume_24h);
                 priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
-                statusDisplay.innerText = `VOL: ${Math.floor(currentVol).toLocaleString()} BTC`;
+                // Set spiral expansion based on current price vs daily open
+                expansionFactor = 0.8 + (Math.abs(btcPrice - startDayPrice) / 1000);
             }
             if (data.type === 'match' && currentView === 'radar') {
-                ships.push({ x: Math.random() * RES_W, y: data.side === 'buy' ? RES_H + 20 : -20, side: data.side, vol: parseFloat(data.size), v: 1.5 + Math.random() * 2 });
+                ships.push({ x: Math.random() * RES_W, y: data.side === 'buy' ? RES_H + 20 : -20, side: data.side, vol: parseFloat(data.size), v: 1.2 + Math.random() * 1.5 });
             }
         };
     }
 
     viewToggle.onclick = () => {
-        currentView = currentView === 'singularity' ? 'radar' : 'singularity';
-        viewToggle.innerText = currentView === 'singularity' ? 'TO BATTLEFIELD' : 'TO CORE';
+        currentView = (currentView === 'singularity') ? 'radar' : 'singularity';
+        viewToggle.innerText = (currentView === 'singularity') ? 'TO BATTLEFIELD' : 'TO CORE';
     };
 
     function drawGalaxy(time) {
         const cx = RES_W/2, cy = RES_H/2;
         const color = btcPrice >= startDayPrice ? [0, 255, 136] : [255, 68, 68];
-        const volSpeed = (currentVol / 100000) * 0.01;
         
-        galacticRotation += 0.005 + volSpeed;
+        // Slower, more majestic rotation
+        galacticRotation += 0.002;
 
         spiralStars.forEach(s => {
-            const currentAngle = s.angle + galacticRotation;
-            const x = cx + Math.cos(currentAngle) * s.r;
-            const y = cy + Math.sin(currentAngle) * s.r * 0.6; // Elliptical tilt
+            const rotAngle = s.angle + galacticRotation;
+            // Radius scales dynamically with expansionFactor
+            const r = (s.baseR + s.volR) * expansionFactor;
+            const x = cx + Math.cos(rotAngle) * r;
+            const y = cy + Math.sin(rotAngle) * r * 0.5;
 
             ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${s.alpha})`;
             ctx.fillRect(Math.floor(x), Math.floor(y), s.size, s.size);
-
-            if (s.isNebula) {
-                ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.03)`;
-                ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI*2); ctx.fill();
-            }
         });
     }
 
-    function drawSingularity(time) {
-        const cx = RES_W/2, cy = RES_H/2;
-        const pulse = 22 + Math.sin(time/150)*3;
-
-        // Saturn Rings (drawn to clip through the core)
-        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    function drawLaserLine(time) {
+        const y = RES_H / 2;
+        const color = btcPrice >= startDayPrice ? "0, 255, 136" : "255, 68, 68";
+        
+        // Flickering Laser Core
+        ctx.strokeStyle = `rgba(${color}, ${0.4 + Math.random() * 0.4})`;
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.ellipse(cx, cy, 70, 25, Math.PI/10, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(RES_W, y); ctx.stroke();
 
-        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse * 1.5);
-        g.addColorStop(0, "#fff");
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(cx, cy, pulse * 1.5, 0, Math.PI*2); ctx.fill();
+        // Laser Bloom (Glow)
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = `rgb(${color})`;
+        ctx.strokeStyle = `rgba(${color}, 0.15)`;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
     }
 
     function render(time) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, RES_W, RES_H);
-
         if (btcPrice === 0) return requestAnimationFrame(render);
 
         drawGalaxy(time);
 
         if (currentView === 'singularity') {
-            drawSingularity(time);
+            // White core with ring
+            const cx = RES_W/2, cy = RES_H/2;
+            const pulse = 20 + Math.sin(time/200)*2;
+            const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, pulse * 2);
+            g.addColorStop(0, "#fff"); g.addColorStop(1, "transparent");
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(cx, cy, pulse * 2, 0, Math.PI*2); ctx.fill();
+            
+            ctx.strokeStyle = "rgba(255,255,255,0.3)";
+            ctx.beginPath(); ctx.ellipse(cx, cy, 60, 18, Math.PI/12, 0, Math.PI*2); ctx.stroke();
         } else {
+            drawLaserLine(time);
+
             ships = ships.filter(s => {
                 ctx.fillStyle = s.side === 'buy' ? "#00ff88" : "#ff4444";
-                const sz = 3 + Math.min(10, s.vol * 150);
+                const sz = 2 + Math.min(8, s.vol * 150);
                 ctx.fillRect(s.x - sz/2, s.y, sz, sz);
                 s.y += s.side === 'buy' ? -s.v : s.v;
-                if (Math.abs(s.y - RES_H/2) < 2) {
-                    for(let i=0; i<6; i++) explosions.push({ x: s.x, y: s.y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 1.0, color: ctx.fillStyle });
+
+                // Laser Collision
+                if (Math.abs(s.y - RES_H/2) < 3) {
+                    for(let i=0; i<6; i++) {
+                        explosions.push({ 
+                            x: s.x, y: RES_H/2, 
+                            vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, 
+                            life: 1.0, color: ctx.fillStyle 
+                        });
+                    }
+                    return false; // Ship destroyed
                 }
                 return s.y > -50 && s.y < RES_H + 50;
             });
+
             explosions = explosions.filter(e => {
                 ctx.fillStyle = e.color; ctx.globalAlpha = e.life;
                 ctx.fillRect(e.x, e.y, 2, 2);
-                e.x += e.vx; e.y += e.vy; e.life -= 0.02;
+                e.x += e.vx; e.y += e.vy; e.life -= 0.04;
                 return e.life > 0;
             });
             ctx.globalAlpha = 1;
@@ -152,9 +171,7 @@
         requestAnimationFrame(render);
     }
 
-    initVortex();
-    initWS();
-    render();
+    initVortex(); initWS(); render();
 </script>
 </body>
 </html>
