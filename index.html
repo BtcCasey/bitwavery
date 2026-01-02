@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin: The Great Treasure Voyage</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #02050a; font-family: 'Press Start 2P', cursive; color: #fff; }
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        #ui { 
+            position: absolute; top: 20px; left: 20px; z-index: 100; 
+            background: rgba(0,0,0,0.8); padding: 25px; border-radius: 8px; 
+            border: 2px solid #f7931a; box-shadow: 0 0 30px rgba(247, 147, 26, 0.4);
+        }
+        h1 { margin: 5px 0; font-size: 2.8em; color: #f7931a; text-shadow: 0 0 15px rgba(247, 147, 26, 0.7); }
+        .stats { font-size: 0.8em; color: #ccc; letter-spacing: 1px; margin-top: 8px; }
+        #storm-log, #treasure-alert { 
+            margin-top: 15px; font-weight: bold; opacity: 0; 
+            transition: opacity 0.5s, transform 0.3s; transform: scale(0.9);
+        }
+        #storm-log { color: #ff6666; }
+        #treasure-alert { color: #ffe066; text-shadow: 0 0 8px rgba(255, 224, 102, 0.8); }
+
+        canvas { display: block; background: radial-gradient(ellipse at bottom, #071936 0%, #02050a 100%); }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="stats">BITCOIN.USD // LIVE DATA</div>
+    <h1 id="price-text">$000,000</h1>
+    <div id="moon-phase" class="stats">MOON PROXIMITY: N/A</div>
+    <div id="storm-log">> MARKET VOLATILITY DETECTED. SEEK SHELTER!</div>
+    <div id="treasure-alert">> TREASURE SPOTTED! NEW 24H HIGH!</div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const priceText = document.getElementById('price-text');
+const moonStatus = document.getElementById('moon-phase');
+const stormLog = document.getElementById('storm-log');
+const treasureAlert = document.getElementById('treasure-alert');
+
+let width, height, btcPrice = 65000, targetPrice = 65000;
+let lastPrice = 65000;
+let _24hHigh = 65000; // Simulating 24h high for treasure chest logic
+let time = 0, lightning = 0, isStorming = false;
+const ATH = 126300; // Placeholder ATH for moon proximity
+let rain = [];
+let stars = [];
+let treasureChests = [];
+
+function init() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    stars = Array.from({length: 100}, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height * 0.5, // Only top half for sky
+        size: Math.random() * 2,
+        alpha: Math.random()
+    }));
+}
+window.addEventListener('resize', init);
+init();
+
+async function fetchPrice() {
+    try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+        const data = await res.json();
+        targetPrice = data.bitcoin.usd;
+        
+        // --- Treasure Chest Logic ---
+        if (targetPrice > _24hHigh) {
+            _24hHigh = targetPrice;
+            treasureChests.push(new TreasureChest());
+            treasureAlert.style.opacity = 1;
+            treasureAlert.style.transform = 'scale(1)';
+            setTimeout(() => { treasureAlert.style.opacity = 0; treasureAlert.style.transform = 'scale(0.9)'; }, 3000);
+        }
+
+        // --- Storm Logic ---
+        if (targetPrice < lastPrice * 0.999 && Math.abs(targetPrice - lastPrice) > 50) { // Significant drop
+            isStorming = true;
+            lightning = 1; // Trigger a lightning flash
+            stormLog.style.opacity = 1;
+            stormLog.style.transform = 'scale(1)';
+        } else if (!isStorming) { // Only calm down if not currently in a storm from a previous drop
+            stormLog.style.opacity = 0;
+            stormLog.style.transform = 'scale(0.9)';
+        }
+        
+        lastPrice = targetPrice; // Update last price for next comparison
+        // Small chance to stop storm even if price is flat, to avoid endless storm
+        if (isStorming && Math.random() > 0.95 && targetPrice > lastPrice * 0.9995) {
+            isStorming = false;
+        }
+
+    } catch(e) { console.warn("Network blip. Cannot fetch price."); }
+}
+setInterval(fetchPrice, 10000); // Fetch every 10 seconds
+fetchPrice(); // Initial fetch
+
+class RainDrop {
+    constructor() { this.reset(); }
+    reset() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * -height;
+        this.v = 15 + Math.random() * 20;
+    }
+    draw() {
+        this.y += this.v;
+        if (this.y > height) this.reset();
+        ctx.strokeStyle = 'rgba(200, 200, 255, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x, this.y + 10);
+        ctx.stroke();
+    }
+}
+for(let i=0; i<150; i++) rain.push(new RainDrop());
+
+class TreasureChest {
+    constructor() {
+        this.x = -100; // Start off-screen left
+        this.y = height * 0.7 + (Math.random() * 30 - 15); // Slightly vary height
+        this.speed = 1 + Math.random();
+        this.size = 30 + Math.random() * 20;
+        this.floatOffset = Math.random() * Math.PI * 2;
+    }
+
+    draw() {
+        this.x += this.speed;
+        this.y += Math.sin(this.floatOffset + time * 0.5) * 0.5; // Gentle bobbing
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(Math.sin(this.floatOffset + time * 0.3) * 0.05); // Gentle rotation
+
+        // Main chest body
+        ctx.fillStyle = '#8B4513'; // Wood color
+        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size * 0.7);
+
+        // Lid
+        ctx.fillStyle = '#A0522D';
+        ctx.fillRect(-this.size/2 - 2, -this.size/2 - 10, this.size + 4, this.size * 0.3);
+
+        // Gold band
+        ctx.fillStyle = '#FFD700'; // Gold
+        ctx.fillRect(-this.size/2, -this.size/2 + this.size * 0.2, this.size, this.size * 0.1);
+        ctx.fillRect(-5, -this.size/2 - 10, 10, this.size * 0.3); // Lid clasp
+
+        // Bitcoin symbol
+        ctx.font = `${this.size * 0.4}px Arial`;
+        ctx.fillStyle = 'black';
+        ctx.fillText('₿', -this.size * 0.15, this.size * 0.05);
+
+        ctx.restore();
+    }
+}
+
+function drawStars() {
+    stars.forEach(s => {
+        ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+        s.alpha = (s.alpha + (Math.random() > 0.5 ? 0.01 : -0.01)) % 1; // Twinkle
+        if (s.alpha < 0.2) s.alpha = 0.2;
+    });
+}
+
+function drawMoon() {
+    const ratio = Math.min(btcPrice / ATH, 1.2);
+    const moonSize = 50 + (ratio * 120);
+    const glow = 20 + (ratio * 80);
+    
+    ctx.save();
+    ctx.shadowBlur = glow;
+    ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+    ctx.fillStyle = "#fffceb";
+    ctx.beginPath();
+    ctx.arc(width - 150, 150, moonSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
+    moonStatus.innerText = `MOON PROXIMITY: ${Math.floor(ratio * 100)}%`;
+}
+
+function drawWave(offset, amp, speed, color, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    for (let x = 0; x <= width; x += 10) {
+        const y = height * 0.75 + 
+                 Math.sin(x * 0.003 + time * speed + offset) * amp +
+                 Math.cos(x * 0.015 - time * speed * 0.5) * (amp * 0.3); // More complex wave
+        ctx.lineTo(x, y);
+    }
+    ctx.lineTo(width, height);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+}
+
+function drawShip() {
+    const shipX = width / 2;
+    const waveIntensity = 10 + (btcPrice / 2500);
+    const waveY = height * 0.75 + Math.sin(shipX * 0.003 + time * 0.04) * waveIntensity;
+    const nextY = height * 0.75 + Math.sin((shipX + 1) * 0.003 + time * 0.04) * waveIntensity;
+    const angle = Math.atan2(nextY - waveY, 1) * 0.8; // Reduce tilt slightly for stability
+
+    ctx.save();
+    ctx.translate(shipX, waveY);
+    ctx.rotate(angle);
+
+    // Ship Body
+    ctx.fillStyle = '#f7931a';
+    ctx.beginPath();
+    ctx.moveTo(-55, 0); ctx.lineTo(55, 0); ctx.lineTo(40, 35); ctx.lineTo(-40, 35);
+    ctx.fill();
+    
+    // Sail & Mast
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -75); ctx.stroke();
+    
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(2, -70); ctx.quadraticCurveTo(45, -40, 2, -15);
+    ctx.fill();
+    
+    // Bitcoin Logo on Sail
+    ctx.font = 'bold 22px Arial';
+    ctx.fillStyle = '#f7931a';
+    ctx.fillText('₿', 8, -38);
+
+    ctx.restore();
+}
+
+function animate() {
+    btcPrice += (targetPrice - btcPrice) * 0.02; // Smooth price transition
+    priceText.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
+    time += 0.03;
+
+    // Clear and draw background
+    ctx.clearRect(0, 0, width, height);
+    if (isStorming) {
+        ctx.fillStyle = `rgba(10, 10, 18, 1)`;
+        ctx.fillRect(0,0,width,height);
+    } else {
+        // Canvas background already set with gradient via CSS
+    }
+
+    drawStars();
+    drawMoon();
+
+    if (lightning > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${lightning})`;
+        ctx.fillRect(0,0,width,height);
+        lightning -= 0.08;
+    }
+
+    const waveAmplitude = 15 + (btcPrice / 2000); // Base amplitude influenced by price
+    const stormAmpFactor = isStorming ? 1.5 : 1; // Waves get bigger in a storm
+
+    drawWave(0, waveAmplitude * stormAmpFactor, 0.04, '#1b263b', 0.6); // Deepest wave
+    drawWave(Math.PI / 2, waveAmplitude * 0.8 * stormAmpFactor, 0.03, '#0d1b2a', 0.8); // Mid wave
+    
+    drawShip();
+    
+    drawWave(Math.PI, waveAmplitude * 1.2 * stormAmpFactor, 0.05, '#415a77', 0.4); // Foreground wave
+
+    treasureChests.forEach((chest, index) => {
+        chest.draw();
+        if (chest.x > width + chest.size) { // Remove chests that go off-screen
+            treasureChests.splice(index, 1);
+        }
+    });
+
+    if (isStorming) {
+        rain.forEach(r => r.draw());
+        if (Math.random() > 0.995 && lightning <= 0.1) lightning = 0.3; // Random lightning flashes during storm
+    }
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
