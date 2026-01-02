@@ -3,164 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>8-BIT BITCOIN VOYAGE</title>
+    <title>8-Bit BTC Chart Navigator</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { 
-            margin: 0; 
-            overflow: hidden; 
-            background: #000; 
-            font-family: 'Press Start 2P', cursive;
-            color: #fff;
-            image-rendering: pixelated; /* The secret sauce for 8-bit sharpness */
-        }
-
-        /* Scaled-up Canvas Container */
-        #game-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #081426;
-        }
-
-        canvas {
-            width: 100%;
-            height: 100%;
+            margin: 0; overflow: hidden; background: #000; 
+            font-family: 'Press Start 2P', cursive; color: #fff;
             image-rendering: pixelated;
         }
-
         #ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            background: #000;
-            padding: 15px;
-            border: 4px solid #fff;
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            background: #000; padding: 15px; border: 4px solid #fff;
             box-shadow: 4px 4px 0px #f7931a;
         }
-
         .label { font-size: 8px; color: #aaa; margin-bottom: 8px; }
-        #price { font-size: 18px; color: #f7931a; margin: 0; }
-        #status { font-size: 8px; margin-top: 10px; color: #ff0044; visibility: hidden; }
+        #price { font-size: 16px; color: #f7931a; margin: 0; }
+        canvas { width: 100vw; height: 100vh; display: block; }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div class="label">COIN: BITCOIN</div>
-    <h1 id="price">FETCHING...</h1>
-    <div id="status">! MARKET CRASH !</div>
+    <div class="label">LIVE MARKET DEPTH</div>
+    <h1 id="price">SYNCING...</h1>
 </div>
 
-<div id="game-container">
-    <canvas id="screen"></canvas>
-</div>
+<canvas id="screen"></canvas>
 
 <script>
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
     const priceDisplay = document.getElementById('price');
-    const statusDisplay = document.getElementById('status');
 
-    // Retro Resolution (NES was 256x240)
+    // 8-bit Resolution
     const RES_W = 256;
     const RES_H = 240;
     canvas.width = RES_W;
     canvas.height = RES_H;
 
     let btcPrice = 0;
-    let targetPrice = 0;
-    let time = 0;
-    let lastFlash = 0;
+    let priceHistory = new Array(64).fill(0); // Holds the "wave" data
+    let minPrice = Infinity;
+    let maxPrice = -Infinity;
 
-    // Fetch Live BTC Price
-    async function updateData() {
+    // 1. Fetch Price & Push to History
+    async function updatePrice() {
         try {
             const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
             const data = await res.json();
-            targetPrice = data.bitcoin.usd;
-            if(btcPrice === 0) btcPrice = targetPrice;
+            const current = data.bitcoin.usd;
+            
+            btcPrice = current;
+            priceDisplay.innerText = `$${Math.floor(current).toLocaleString()}`;
+            
+            // Push new price and shift history
+            priceHistory.push(current);
+            priceHistory.shift();
 
-            // Trigger visual "Storm" if price drops
-            if(targetPrice < btcPrice) {
-                statusDisplay.style.visibility = 'visible';
-                lastFlash = 30; // Flash for 30 frames
-            } else {
-                statusDisplay.style.visibility = 'hidden';
-            }
-        } catch (e) { console.log("API Offline"); }
+            // Calculate min/max for scaling the "Ocean"
+            const activePrices = priceHistory.filter(p => p > 0);
+            minPrice = Math.min(...activePrices) * 0.999; // Slight padding
+            maxPrice = Math.max(...activePrices) * 1.001;
+        } catch (e) { console.log("API Error"); }
     }
-    setInterval(updateData, 10000);
-    updateData();
 
-    function drawPixelShip(x, y, angle) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle);
+    // Update more frequently for "smooth" charting
+    setInterval(updatePrice, 5000);
+    updatePrice();
 
-        // Hull (8-bit style blocks)
-        ctx.fillStyle = "#f7931a"; // BTC Orange
-        ctx.fillRect(-8, 0, 16, 6);  // Main base
-        ctx.fillRect(-10, -2, 20, 3); // Top deck
-
-        // Mast
+    function drawPixelShip(x, y) {
+        ctx.fillStyle = "#f7931a";
+        ctx.fillRect(x - 6, y, 12, 4); // Hull
         ctx.fillStyle = "#fff";
-        ctx.fillRect(-1, -12, 2, 10);
-
-        // Sail (Step-shaped for pixel look)
-        ctx.fillRect(1, -11, 4, 1);
-        ctx.fillRect(1, -10, 6, 1);
-        ctx.fillRect(1, -9, 8, 5);
-        ctx.fillRect(1, -4, 6, 1);
-        ctx.fillRect(1, -3, 4, 1);
-
-        ctx.restore();
-    }
-
-    function drawWave(offset, amp, color, speed) {
-        ctx.fillStyle = color;
-        const blockWidth = 4; // Pixel block width
-        
-        for (let x = 0; x < RES_W; x += blockWidth) {
-            // High price = Wild waves
-            const y = (RES_H * 0.7) + Math.sin((x + time * speed) * 0.05 + offset) * amp;
-            // Draw blocky columns for that 8-bit texture
-            ctx.fillRect(x, y, blockWidth, RES_H - y);
-        }
+        ctx.fillRect(x - 1, y - 8, 2, 8); // Mast
+        ctx.fillRect(x + 1, y - 7, 4, 4); // Sail
     }
 
     function render() {
-        // Clear background
-        ctx.fillStyle = (lastFlash > 0 && lastFlash % 2 === 0) ? "#440000" : "#081426";
+        // Clear sky
+        ctx.fillStyle = "#081426";
         ctx.fillRect(0, 0, RES_W, RES_H);
-        if(lastFlash > 0) lastFlash--;
 
-        // Background Moon
-        const moonSize = 10 + (btcPrice / 10000);
+        // Draw Moon (based on ATH proximity)
         ctx.fillStyle = "#fff";
-        ctx.fillRect(RES_W - 50, 40, moonSize, moonSize); // Square moon!
+        ctx.fillRect(RES_W - 40, 30, 16, 16);
 
-        // Update interpolated price
-        btcPrice += (targetPrice - btcPrice) * 0.05;
-        priceDisplay.innerText = `$${Math.floor(btcPrice).toLocaleString()}`;
-
-        time += 1;
-
-        // Draw Waves (Amplitude based on price)
-        const amp = 5 + (btcPrice / 5000);
-        drawWave(0, amp, "#1a2c4d", 0.5);   // Back Wave
+        // Draw the Price Wave
+        const step = RES_W / (priceHistory.length - 1);
+        ctx.fillStyle = "#2d4d86";
         
-        // Ship Position on the Wave
-        const shipX = RES_W / 2;
-        const shipY = (RES_H * 0.7) + Math.sin((shipX + time * 0.8) * 0.05) * amp;
-        const shipAngle = Math.cos((shipX + time * 0.8) * 0.05) * 0.2;
-        drawPixelShip(shipX, shipY - 4, shipAngle);
+        let shipY = RES_H / 2;
 
-        drawWave(10, amp * 0.8, "#2d4d86", 0.8); // Front Wave
+        for (let i = 0; i < priceHistory.length; i++) {
+            const x = i * step;
+            let y = RES_H / 2;
+
+            if (priceHistory[i] > 0) {
+                // Map the price to the screen height
+                const normalized = (priceHistory[i] - minPrice) / (maxPrice - minPrice);
+                y = (RES_H * 0.8) - (normalized * 100);
+            }
+
+            // The ship sits on the VERY LAST price point (the leading edge)
+            if (i === priceHistory.length - 1) {
+                shipY = y;
+            }
+
+            // Draw blocky column
+            ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(step), RES_H - y);
+        }
+
+        // Add a "water line" highlight
+        ctx.fillStyle = "#5d85c4";
+        for (let i = 0; i < priceHistory.length; i++) {
+            const x = i * step;
+            const normalized = (priceHistory[i] - minPrice) / (maxPrice - minPrice);
+            const y = (RES_H * 0.8) - (normalized * 100);
+            ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(step), 2);
+        }
+
+        drawPixelShip(RES_W - 10, shipY - 4);
 
         requestAnimationFrame(render);
     }
