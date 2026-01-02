@@ -3,27 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>16-BIT BITCOIN SINGULARITY</title>
+    <title>16-BIT BTC SINGULARITY</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; overflow: hidden; background: #02040a; font-family: 'Press Start 2P', cursive; color: #fff; }
+        body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
         #ui {
             position: absolute; top: 25px; left: 25px; z-index: 100;
-            background: rgba(0,0,0,0.8); padding: 20px; border: 2px solid #5e43f3;
-            box-shadow: 0 0 15px #5e43f3;
+            background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3;
+            box-shadow: 0 0 20px rgba(94, 67, 243, 0.4);
         }
-        .label { font-size: 8px; color: #5e43f3; margin-bottom: 8px; letter-spacing: 2px; }
-        #price { font-size: 18px; color: #fff; margin: 0; }
-        #status { font-size: 8px; margin-top: 10px; color: #00ffcc; }
+        .label { font-size: 8px; color: #5e43f3; margin-bottom: 8px; letter-spacing: 1px; }
+        #price { font-size: 16px; color: #fff; margin: 0; }
+        #status { font-size: 7px; margin-top: 10px; color: #00ffcc; }
         canvas { display: block; image-rendering: pixelated; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div class="label">CORE SIGNAL: BTC</div>
-    <h1 id="price">SYNCING...</h1>
-    <div id="status">ESTABLISHING LINK...</div>
+    <div class="label">CORE SIGNAL: BITCOIN</div>
+    <h1 id="price">INITIALIZING...</h1>
+    <div id="status">SCANNING DEEP SPACE...</div>
 </div>
 
 <canvas id="screen"></canvas>
@@ -37,104 +37,116 @@
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
-    let targetPrice = 0;
-    let currentPrice = 0;
-    let volatility = 0;
+    let targetPrice = 0, currentPrice = 0, volatility = 0;
+    let lastUpdate = Date.now();
     let particles = [];
     
-    // Create a field of background stars
-    let bgStars = Array.from({length: 150}, () => ({
-        x: Math.random() * RES_W,
-        y: Math.random() * RES_H,
-        size: Math.random() * 1.5,
-        speed: 0.2 + Math.random() * 0.5
+    // Background Starfield
+    let bgStars = Array.from({length: 120}, () => ({
+        x: Math.random() * RES_W, y: Math.random() * RES_H,
+        s: Math.random() * 1.5, v: 0.1 + Math.random() * 0.4
     }));
 
-    // Initialize the orbital particle ring
-    for(let i=0; i < 200; i++) {
+    // Orbital Particles
+    for(let i=0; i < 150; i++) {
         particles.push({
-            angle: Math.random() * Math.PI * 2,
-            distance: 40 + Math.random() * 20,
-            speed: 0.02 + Math.random() * 0.05,
-            size: 1 + Math.random() * 2
+            a: Math.random() * Math.PI * 2,
+            d: 50 + Math.random() * 30,
+            v: 0.01 + Math.random() * 0.03,
+            sz: 1 + Math.random() * 2,
+            c: "#00ffcc"
         });
     }
 
-    function initSocket() {
-        const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@ticker');
+    // --- NEW MULTI-CHANNEL DATA STREAM ---
+    function initDataStream() {
+        // Source 1: CoinCap WebSocket (Highly reliable)
+        const ws = new WebSocket('wss://ws.coincap.io/prices?assets=bitcoin');
+        
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            const newPrice = parseFloat(data.c);
-            
-            // Calculate Volatility (Price Change Intensity)
-            volatility = Math.abs(newPrice - targetPrice);
-            targetPrice = newPrice;
-            
-            priceDisplay.innerText = `$${Math.floor(targetPrice).toLocaleString()}`;
-            statusDisplay.innerText = "● SIGNAL STABLE";
+            if (data.bitcoin) processUpdate(parseFloat(data.bitcoin), "LIVE STREAM");
         };
-        ws.onerror = () => { statusDisplay.innerText = "● RECONNECTING..."; setTimeout(initSocket, 5000); };
+
+        ws.onerror = () => { ws.close(); startFallback(); };
+        ws.onclose = () => startFallback();
+
+        // Safety Trigger: If no data for 3 seconds, force fallback
+        setTimeout(() => { if(targetPrice === 0) startFallback(); }, 3000);
+    }
+
+    async function startFallback() {
+        statusDisplay.innerText = "● FALLBACK MODE: REST";
+        statusDisplay.style.color = "#f7931a";
+        setInterval(async () => {
+            try {
+                const res = await fetch('https://api.coincap.io/v2/assets/bitcoin');
+                const data = await res.json();
+                processUpdate(parseFloat(data.data.priceUsd), "REST SYNC");
+            } catch(e) { statusDisplay.innerText = "● SIGNAL LOST"; }
+        }, 1000);
+    }
+
+    function processUpdate(price, mode) {
+        volatility = targetPrice === 0 ? 0 : Math.abs(price - targetPrice);
+        targetPrice = price;
+        lastUpdate = Date.now();
+        priceDisplay.innerText = `$${Math.floor(targetPrice).toLocaleString()}`;
+        if(mode !== "REST SYNC") statusDisplay.innerText = "● SIGNAL STABLE";
     }
 
     function render(time) {
-        // 1. Darker "Space" clear
-        ctx.fillStyle = "#02040a";
+        ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
 
-        // 2. Animate Background Stars
+        // Stars
         ctx.fillStyle = "#fff";
         bgStars.forEach(s => {
-            s.x -= s.speed;
-            if (s.x < 0) s.x = RES_W;
-            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.size, s.size);
+            s.x = (s.x - s.v + RES_W) % RES_W;
+            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.s, s.s);
         });
 
-        // Smoothly interpolate current price for visual flow
-        currentPrice += (targetPrice - currentPrice) * 0.1;
+        if (targetPrice === 0) { requestAnimationFrame(render); return; }
 
+        currentPrice += (targetPrice - currentPrice) * 0.05;
         const centerX = RES_W / 2;
         const centerY = RES_H / 2;
 
-        // 3. Draw the "Bitcoin Core" (The Star)
-        // Pulse size tied to volatility + base size
-        const pulse = Math.sin(time / 200) * 5;
-        const coreSize = 25 + (volatility * 0.5) + pulse;
+        // Core Pulsar
+        const pulse = Math.sin(time / 150) * (5 + volatility);
+        const coreSize = 30 + pulse;
         
-        // Star Outer Glow
-        const grad = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, coreSize * 2);
-        grad.addColorStop(0, "#fff");
-        grad.addColorStop(0.3, "#f7931a");
-        grad.addColorStop(1, "transparent");
-        
-        ctx.fillStyle = grad;
-        ctx.fillRect(centerX - coreSize * 2, centerY - coreSize * 2, coreSize * 4, coreSize * 4);
+        // Glow
+        const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, coreSize * 1.5);
+        g.addColorStop(0, "#fff");
+        g.addColorStop(0.2, "#5e43f3");
+        g.addColorStop(1, "transparent");
+        ctx.fillStyle = g;
+        ctx.fillRect(centerX - 100, centerY - 100, 200, 200);
 
-        // 4. Draw Orbital Particles (The Market)
+        // Orbitals
         particles.forEach(p => {
-            p.angle += p.speed * (1 + volatility * 0.1);
+            p.a += p.v * (1 + (volatility * 0.2));
+            // Expansion based on price modulo
+            const drift = (currentPrice % 100) / 2;
+            const x = centerX + Math.cos(p.a) * (p.d + drift);
+            const y = centerY + Math.sin(p.a) * (p.d + drift);
             
-            // Particles react to price: distance expands when price goes up
-            const priceInfluence = (currentPrice % 500) / 10;
-            const x = centerX + Math.cos(p.angle) * (p.distance + priceInfluence);
-            const y = centerY + Math.sin(p.angle) * (p.distance + priceInfluence);
-
-            // Color shifts to red if volatility is high
-            ctx.fillStyle = volatility > 10 ? "#ff4d4d" : "#00ffcc";
-            ctx.fillRect(Math.floor(x), Math.floor(y), p.size, p.size);
+            ctx.fillStyle = volatility > 5 ? "#ff4466" : "#00ffcc";
+            ctx.fillRect(Math.floor(x), Math.floor(y), p.sz, p.sz);
         });
 
-        // 5. Legend / HUD lines
-        ctx.strokeStyle = "rgba(94, 67, 243, 0.3)";
-        ctx.lineWidth = 1;
+        // HUD Geometry
+        ctx.strokeStyle = "rgba(94, 67, 243, 0.2)";
         ctx.beginPath();
-        ctx.moveTo(centerX - 100, centerY); ctx.lineTo(centerX + 100, centerY);
-        ctx.moveTo(centerX, centerY - 60); ctx.lineTo(centerX, centerY + 60);
+        ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
+        ctx.moveTo(centerX - 120, centerY); ctx.lineTo(centerX + 120, centerY);
         ctx.stroke();
 
         requestAnimationFrame(render);
     }
 
-    initSocket();
+    initDataStream();
     requestAnimationFrame(render);
 </script>
 </body>
