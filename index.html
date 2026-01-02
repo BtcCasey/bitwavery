@@ -2,24 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>BTC COMMAND: SOVEREIGN</title>
+    <title>BTC COMMAND: SOVEREIGN CORE</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background: #010208; font-family: 'Press Start 2P', cursive; color: #fff; }
-        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.9); padding: 18px; border: 2px solid #5e43f3; pointer-events: none; }
-        #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #5e43f3; color: #fff; border: 4px solid #fff; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
+        #ui-main { position: absolute; top: 25px; left: 25px; z-index: 100; background: rgba(0,0,0,0.95); padding: 18px; border: 2px solid #fff; pointer-events: none; }
+        #view-toggle { position: absolute; top: 25px; right: 25px; z-index: 100; background: #fff; color: #000; border: 2px solid #000; padding: 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 10px; }
         #price { font-size: 18px; color: #fff; margin: 0; }
-        #status { font-size: 7px; margin-top: 10px; color: #00ffcc; text-transform: uppercase; }
+        #status { font-size: 7px; margin-top: 10px; color: #aaa; text-transform: uppercase; }
         canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-<button id="view-toggle">SWITCH TO RADAR</button>
+<button id="view-toggle">TO BATTLEFIELD</button>
 <div id="ui-main">
-    <div id="view-label" style="font-size: 8px; color: #5e43f3; margin-bottom: 8px;">SYSTEM: ACTIVE</div>
-    <h1 id="price">INITIALIZING...</h1>
-    <div id="status">CONNECTING TO COINBASE L2...</div>
+    <div id="view-label" style="font-size: 8px; color: #fff; margin-bottom: 8px;">COSMOS STATUS: SYNCED</div>
+    <h1 id="price">...</h1>
+    <div id="status">SCANNING DEEP SPACE...</div>
 </div>
 <canvas id="screen"></canvas>
 
@@ -33,15 +33,11 @@
     const RES_W = 480; const RES_H = 270;
     canvas.width = RES_W; canvas.height = RES_H;
 
-    // --- CONFIG & STATE ---
+    // --- STATE ---
     let currentView = 'singularity';
-    let btcPrice = 0, startHourPrice = 0;
-    let history = []; // Stores {price, time} for 60 mins
-    let asks = [], bids = [], lasers = [];
-    let sentimentColor = {r: 255, g: 255, b: 255};
-    const MAX_HISTORY = 360; // Approx 1 hour at 10s intervals
-
-    const lerp = (a, b, t) => a + (b - a) * t;
+    let btcPrice = 0, startDayPrice = 0, currentVol = 0;
+    let ships = []; // {x, y, side, vol, life}
+    let stars = Array.from({length: 60}, () => ({ x: Math.random()*RES_W, y: Math.random()*RES_H, v: 0.05+Math.random()*0.1 }));
 
     // --- DATA ENGINE ---
     function init() {
@@ -49,132 +45,94 @@
         ws.onopen = () => {
             ws.send(JSON.stringify({
                 type: "subscribe",
-                channels: ["ticker", "level2_batch", "matches"],
+                channels: ["ticker", "matches"],
                 product_ids: ["BTC-USD"]
             }));
+            // Get 24h open price for star color
+            fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats')
+                .then(r => r.json()).then(d => startDayPrice = parseFloat(d.open));
         };
 
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.type === 'ticker') {
                 btcPrice = parseFloat(data.price);
-                if (!startHourPrice) startHourPrice = btcPrice;
+                currentVol = parseFloat(data.volume_24h);
                 priceDisplay.innerText = `$${btcPrice.toLocaleString()}`;
-                statusDisplay.innerText = "COINBASE-L2: STREAMING";
-                
-                // Add to 1-hour chart (every few seconds)
-                if (history.length === 0 || Date.now() - history[history.length-1].t > 10000) {
-                    history.push({p: btcPrice, t: Date.now()});
-                    if (history.length > MAX_HISTORY) history.shift();
-                }
-            }
-            if (data.type === 'snapshot') {
-                asks = data.asks.slice(0, 10);
-                bids = data.bids.slice(0, 10);
+                statusDisplay.innerText = `VOL: ${Math.floor(currentVol).toLocaleString()} BTC`;
             }
             if (data.type === 'match' && currentView === 'radar') {
-                lasers.push({ y: Math.random() * RES_H, side: data.side, life: 1.0, size: parseFloat(data.size) });
+                ships.push({
+                    x: Math.random() * RES_W,
+                    y: data.side === 'buy' ? RES_H + 20 : -20,
+                    side: data.side,
+                    vol: parseFloat(data.size),
+                    v: 1 + Math.random() * 2
+                });
             }
         };
     }
 
     viewToggle.onclick = () => {
         currentView = currentView === 'singularity' ? 'radar' : 'singularity';
-        viewToggle.innerText = currentView === 'singularity' ? 'SWITCH TO RADAR' : 'RETURN TO CORE';
+        viewToggle.innerText = currentView === 'singularity' ? 'TO BATTLEFIELD' : 'TO CORE';
     };
 
-    function drawAxis(centerX, y, label, color) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(RES_W, y); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = color;
-        ctx.font = '6px "Press Start 2P"';
-        ctx.fillText(label, 10, y - 5);
+    function drawSaturn(time) {
+        const cx = RES_W/2, cy = RES_H/2;
+        const volSpeed = 1 + (currentVol / 10000); // Speed scale
+        
+        // --- THE RINGS (BACK PART) ---
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 60, 20, Math.PI/8 + Math.sin(time/2000)*0.1, Math.PI, 0);
+        ctx.stroke();
+
+        // --- THE WHITE CORE ---
+        const pulse = 25 + Math.sin(time/200)*3;
+        const g = ctx.createRadialGradient(cx, cy, 5, cx, cy, pulse);
+        g.addColorStop(0, "#fff");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, cy, pulse, 0, Math.PI*2); ctx.fill();
+
+        // --- THE RINGS (FRONT PART) ---
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 60, 20, Math.PI/8 + Math.sin(time/2000)*0.1, 0, Math.PI);
+        ctx.stroke();
     }
 
     function render(time) {
         ctx.fillStyle = "#010208";
         ctx.fillRect(0, 0, RES_W, RES_H);
+
+        // --- SENTIMENT STARS ---
+        const starColor = btcPrice >= startDayPrice ? "#00ff88" : "#ff4444";
+        stars.forEach(s => {
+            s.x = (s.x - s.v + RES_W) % RES_W;
+            ctx.fillStyle = starColor;
+            ctx.globalAlpha = 0.3 + Math.sin(time/500 + s.x)*0.2;
+            ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
+        });
+        ctx.globalAlpha = 1;
+
         if (btcPrice === 0) return requestAnimationFrame(render);
 
-        // Calculate Sentiment Color (Current Price vs 1-Hour Start)
-        const diff = btcPrice - startHourPrice;
-        const targetColor = diff >= 0 ? {r: 0, g: 255, b: 136} : {r: 255, g: 68, b: 68};
-        sentimentColor.r = lerp(sentimentColor.r, targetColor.r, 0.05);
-        sentimentColor.g = lerp(sentimentColor.g, targetColor.g, 0.05);
-        sentimentColor.b = lerp(sentimentColor.b, targetColor.b, 0.05);
-        const sCol = `rgb(${sentimentColor.r},${sentimentColor.g},${sentimentColor.b})`;
-
-        const centerX = RES_W/2, centerY = RES_H/2;
-
         if (currentView === 'singularity') {
-            // --- 60-MIN HISTORICAL COMET TRAIL ---
-            if (history.length > 1) {
-                ctx.beginPath();
-                ctx.strokeStyle = sCol;
-                ctx.lineWidth = 2;
-                ctx.globalAlpha = 0.5;
-                history.forEach((h, i) => {
-                    const tx = centerX - (history.length - i) * (RES_W / (MAX_HISTORY * 0.8));
-                    const ty = centerY + (btcPrice - h.p) * 0.2; // Scale price movement
-                    if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
-                });
-                ctx.stroke();
-                ctx.globalAlpha = 1;
-            }
-
-            // --- THE CORE ---
-            const pulse = 20 + Math.sin(time/250)*5;
-            const g = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, pulse*2);
-            g.addColorStop(0, "#fff");
-            g.addColorStop(0.3, sCol);
-            g.addColorStop(1, "transparent");
-            ctx.fillStyle = g;
-            ctx.fillRect(centerX-80, centerY-80, 160, 160);
-
+            drawSaturn(time);
         } else {
-            // --- RADAR MOTHERSHIPS & AXIS ---
-            const priceScale = 0.5; // Pixels per dollar
-            
-            // Draw Dynamic Price Axis
-            [...Array(5)].forEach((_, i) => {
-                const step = 50 * (i - 2);
-                const p = Math.floor(btcPrice / 50) * 50 + step;
-                const y = centerY + (btcPrice - p) * priceScale;
-                drawAxis(centerX, y, `$${p}`, "rgba(94, 67, 243, 0.3)");
-            });
+            // --- BATTLEFIELD SHIPS ---
+            ships = ships.filter(s => {
+                ctx.fillStyle = s.side === 'buy' ? "#00ff88" : "#ff4444";
+                const size = 2 + Math.min(8, s.vol * 100);
+                
+                // Draw 8-bit ship
+                ctx.fillRect(s.x, s.y, size, size);
+                ctx.fillRect(s.x + (size/4), s.side === 'buy' ? s.y+size : s.y-size/2, size/2, size/2);
 
-            // Mothership Positioning (Moves toward current price axis)
-            const sellWallPrice = asks[0] ? parseFloat(asks[0][0]) : btcPrice + 10;
-            const buyWallPrice = bids[0] ? parseFloat(bids[0][0]) : btcPrice - 10;
-
-            const redShipY = centerY - (sellWallPrice - btcPrice) * priceScale;
-            const greenShipY = centerY + (btcPrice - buyWallPrice) * priceScale;
-
-            // Red Mothership
-            ctx.fillStyle = "#ff4444";
-            ctx.fillRect(centerX-30, redShipY-10, 60, 10); // Hull
-            ctx.fillRect(centerX-10, redShipY-15, 20, 5); // Bridge
-            
-            // Green Mothership
-            ctx.fillStyle = "#00ff88";
-            ctx.fillRect(centerX-30, greenShipY, 60, 10); // Hull
-            ctx.fillRect(centerX-10, greenShipY+10, 20, 5); // Bridge
-
-            // Trade Lasers
-            lasers = lasers.filter(l => {
-                ctx.strokeStyle = l.side === 'buy' ? `rgba(0, 255, 136, ${l.life})` : `rgba(255, 68, 68, ${l.life})`;
-                ctx.lineWidth = Math.min(5, l.size * 10);
-                ctx.beginPath();
-                if (l.side === 'buy') {
-                    ctx.moveTo(centerX, greenShipY); ctx.lineTo(Math.random()*RES_W, l.y);
-                } else {
-                    ctx.moveTo(centerX, redShipY); ctx.lineTo(Math.random()*RES_W, l.y);
-                }
-                ctx.stroke();
-                l.life -= 0.05; return l.life > 0;
+                s.y += s.side === 'buy' ? -s.v : s.v;
+                return s.y > -50 && s.y < RES_H + 50;
             });
         }
 
